@@ -10,7 +10,10 @@ import qualified Graphics.UI.GLFW as GLFW (
 import Graphics.GL
 
 import Linear (
-  V3(V3),M44,lookAt,perspective,(!*!),quadrance,(*^),(^-^))
+  V3(V3), (*^), (^-^), dot, cross, normalize, quadrance,
+  M44, mkTransformation, perspective, (!*!), transpose,
+  Quaternion(Quaternion), rotate,
+  V4(V4), vector, point)
 
 import Foreign.Storable (
   Storable(..), peek, sizeOf)
@@ -44,11 +47,46 @@ main = do
   GLFW.terminate
 
 
-cameraMatrix :: M44 GLfloat
-cameraMatrix =
+data Camera = Camera {
+  _cameraPosition :: V3 GLfloat,
+  _cameraOrientation :: Quaternion GLfloat }
+
+lookAt :: V3 GLfloat -> V3 GLfloat -> Camera
+lookAt eye center = Camera eye orientation where
+  orientation = quaternionBetweenVectors negativeZ direction
+  negativeZ = V3 0 0 (-1)
+  direction = normalize (center ^-^ eye)
+
+quaternionBetweenVectors :: V3 GLfloat -> V3 GLfloat -> Quaternion GLfloat
+quaternionBetweenVectors x y =
+  normalize (1 + Quaternion (dot x y) (cross x y))
+
+camera :: Camera
+camera = lookAt (V3 40 40 30) (V3 0 0 0)
+
+yaw :: GLfloat -> Camera -> Camera
+yaw x (Camera position orientation) = Camera position orientation
+
+cameraMatrix :: Camera -> M44 GLfloat
+cameraMatrix (Camera position orientation) =
+  mkTransformation inverseOrientation inversePosition where
+    inverseOrientation = 1 / orientation
+    inversePosition = rotate inverseOrientation (negate position)
+
+
+  {-transpose (V4 e1 e2 e3 np) where
+  e1 = vector (rotate inverseOrientation (V3 1 0 0))
+  e2 = vector (rotate inverseOrientation (V3 0 1 0))
+  e3 = vector (rotate inverseOrientation (V3 0 0 1))
+  np = point inversePosition
+  inverseorientation = 1 / orientation
+  inverseposition = negate position-}
+
+viewProjectionMatrix :: M44 GLfloat
+viewProjectionMatrix =
   perspective 1 1 0.001 1000
     !*!
-  lookAt (V3 44 40 33) (V3 0 0 0) (V3 0 0 1)
+  (cameraMatrix camera)
 
 
 type Resolution = Int
@@ -74,7 +112,7 @@ renderCube RenderState{..} positionVector = do
 
   -- render
   glUseProgram _shaderProgram
-  with cameraMatrix (\cameraMatrixPtr ->
+  with viewProjectionMatrix (\cameraMatrixPtr ->
     glUniformMatrix4fv _cameraMatrixUniform 1 GL_TRUE (castPtr cameraMatrixPtr))
   with positionVector (\positionVectorPtr ->
     glUniform3fv _positionVectorUniform 1 (castPtr positionVectorPtr))
