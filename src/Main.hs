@@ -5,15 +5,15 @@ import qualified Graphics.UI.GLFW as GLFW (
   Window,
   init, terminate,
   createWindow, makeContextCurrent, windowShouldClose,
-  pollEvents, swapBuffers, getTime)
+  pollEvents, swapBuffers, getTime,
+  getKey, KeyState(..), Key(..))
 
 import Graphics.GL
 
 import Linear (
-  V3(V3), (*^), (^-^), dot, cross, normalize, quadrance,
+  V3(V3), (*^), (^+^), (^-^), dot, cross, normalize, quadrance,
   M44, mkTransformation, perspective, (!*!), transpose,
-  Quaternion(Quaternion), rotate,
-  V4(V4), vector, point)
+  Quaternion(Quaternion), rotate)
 
 import Foreign.Storable (
   Storable(..), peek, sizeOf)
@@ -40,7 +40,7 @@ main = do
 
   renderState <- initRenderState
 
-  loop window time renderState
+  loop window time renderState initialCamera
 
   clear renderState
 
@@ -61,11 +61,15 @@ quaternionBetweenVectors :: V3 GLfloat -> V3 GLfloat -> Quaternion GLfloat
 quaternionBetweenVectors x y =
   normalize (1 + Quaternion (dot x y) (cross x y))
 
-camera :: Camera
-camera = lookAt (V3 40 40 30) (V3 0 0 0)
+initialCamera :: Camera
+initialCamera = lookAt (V3 40 40 30) (V3 0 0 0)
 
 yaw :: GLfloat -> Camera -> Camera
 yaw x (Camera position orientation) = Camera position orientation
+
+fly :: V3 GLfloat -> Camera -> Camera
+fly direction (Camera position orientation) =
+  Camera (position ^+^ rotate orientation direction) orientation
 
 cameraMatrix :: Camera -> M44 GLfloat
 cameraMatrix (Camera position orientation) =
@@ -73,20 +77,8 @@ cameraMatrix (Camera position orientation) =
     inverseOrientation = 1 / orientation
     inversePosition = rotate inverseOrientation (negate position)
 
-
-  {-transpose (V4 e1 e2 e3 np) where
-  e1 = vector (rotate inverseOrientation (V3 1 0 0))
-  e2 = vector (rotate inverseOrientation (V3 0 1 0))
-  e3 = vector (rotate inverseOrientation (V3 0 0 1))
-  np = point inversePosition
-  inverseorientation = 1 / orientation
-  inverseposition = negate position-}
-
-viewProjectionMatrix :: M44 GLfloat
-viewProjectionMatrix =
-  perspective 1 1 0.001 1000
-    !*!
-  (cameraMatrix camera)
+projectionMatrix :: M44 GLfloat
+projectionMatrix = perspective 1 1 0.001 1000
 
 
 type Resolution = Int
@@ -97,14 +89,21 @@ ball :: Volume
 ball x = quadrance (x ^-^ (V3 8 8 8)) < 15 * 15
 
 
-renderVolume :: RenderState -> Resolution -> Volume -> IO ()
-renderVolume renderState resolution volume = sequence_ (do
-  i1 <- [0 .. resolution - 1]
-  i2 <- [0 .. resolution - 1]
-  i3 <- [0 .. resolution - 1]
-  let position = fmap fromIntegral (V3 i1 i2 i3)
-  guard (volume position)
-  return (renderCube renderState position))
+renderVolume :: Camera -> RenderState -> Resolution -> Volume -> IO ()
+renderVolume camera renderState resolution volume = do
+
+  let viewProjectionMatrix = projectionMatrix !*! cameraMatrix camera
+
+  with viewProjectionMatrix (\cameraMatrixPtr ->
+    glUniformMatrix4fv (_cameraMatrixUniform renderState) 1 GL_TRUE (castPtr cameraMatrixPtr))
+
+  sequence_ (do
+    i1 <- [0 .. resolution - 1]
+    i2 <- [0 .. resolution - 1]
+    i3 <- [0 .. resolution - 1]
+    let position = fmap fromIntegral (V3 i1 i2 i3)
+    guard (volume position)
+    return (renderCube renderState position))
 
 
 renderCube :: RenderState -> V3 GLfloat -> IO ()
@@ -112,8 +111,6 @@ renderCube RenderState{..} positionVector = do
 
   -- render
   glUseProgram _shaderProgram
-  with viewProjectionMatrix (\cameraMatrixPtr ->
-    glUniformMatrix4fv _cameraMatrixUniform 1 GL_TRUE (castPtr cameraMatrixPtr))
   with positionVector (\positionVectorPtr ->
     glUniform3fv _positionVectorUniform 1 (castPtr positionVectorPtr))
   glBindVertexArray _vertexArrayObject
@@ -225,24 +222,32 @@ initRenderState = do
   return (RenderState {..})
 
 
-loop :: GLFW.Window -> Double -> RenderState -> IO ()
-loop window lastTime renderState = do
+loop :: GLFW.Window -> Double -> RenderState -> Camera -> IO ()
+loop window lastTime renderState camera = do
 
   glClear (GL_COLOR_BUFFER_BIT .|. GL_DEPTH_BUFFER_BIT)
 
-  renderVolume renderState 32 ball
+  renderVolume camera renderState 32 ball
 
   GLFW.swapBuffers window
+
+  _ <- GLFW.pollEvents
+
+  keystateW <- GLFW.getKey window GLFW.Key'W
+
+  let movement = case keystateW of
+        GLFW.KeyState'Pressed -> V3 0 0 (-0.1)
+        GLFW.KeyState'Released -> V3 0 0 0
+
+  let camera' = fly movement camera
 
   Just thisTime <- GLFW.getTime
 
   printf "Frametime: %4.4f\n" (thisTime - lastTime)
 
-  _ <- GLFW.pollEvents
-
   shouldClose <- GLFW.windowShouldClose window
 
-  unless shouldClose (loop window thisTime renderState)
+  unless shouldClose (loop window thisTime renderState camera')
 
 
 clear :: RenderState -> IO ()
