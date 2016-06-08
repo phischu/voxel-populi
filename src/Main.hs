@@ -5,14 +5,16 @@ import qualified Graphics.UI.GLFW as GLFW (
   Window,
   init, terminate,
   createWindow, makeContextCurrent, windowShouldClose,
-  pollEvents, swapBuffers, getTime,
+  pollEvents, swapBuffers, getTime, getCursorPos,
+  getMouseButton, MouseButtonState(..), MouseButton(..),
   getKey, KeyState(..), Key(..))
 
 import Graphics.GL
 
 import Linear (
-  V3(V3), (*^), (^+^), (^-^), dot, cross, normalize, quadrance,
-  M44, mkTransformation, perspective, (!*!), transpose,
+  V2(V2), V3(V3), (*^), (^+^), (^-^),
+  dot, cross, normalize, quadrance,
+  M44, mkTransformation, perspective, (!*!),
   Quaternion(Quaternion), rotate)
 
 import Foreign.Storable (
@@ -37,10 +39,11 @@ main = do
   GLFW.makeContextCurrent (Just window)
 
   Just time <- GLFW.getTime
+  cursorPos <- GLFW.getCursorPos window
 
   renderState <- initRenderState
 
-  loop window time renderState initialCamera
+  loop window time cursorPos renderState initialCamera
 
   clear renderState
 
@@ -50,26 +53,34 @@ main = do
 data Camera = Camera {
   _cameraPosition :: V3 GLfloat,
   _cameraOrientation :: Quaternion GLfloat }
+    deriving (Show,Eq,Ord)
 
-lookAt :: V3 GLfloat -> V3 GLfloat -> Camera
-lookAt eye center = Camera eye orientation where
-  orientation = quaternionBetweenVectors negativeZ direction
+lookAt :: V3 GLfloat -> V3 GLfloat -> V3 GLfloat -> Camera
+lookAt eye center up = Camera eye orientation where
+  orientation = verticalOrientation * horizontalOrientation
+  verticalOrientation = quaternionBetweenVectors horizontalDirection direction
+  horizontalOrientation = quaternionBetweenVectors negativeZ horizontalDirection
   negativeZ = V3 0 0 (-1)
   direction = normalize (center ^-^ eye)
+  horizontalDirection = direction ^-^ (dot up direction *^ up)
 
 quaternionBetweenVectors :: V3 GLfloat -> V3 GLfloat -> Quaternion GLfloat
 quaternionBetweenVectors x y =
   normalize (1 + Quaternion (dot x y) (cross x y))
 
 initialCamera :: Camera
-initialCamera = lookAt (V3 40 40 30) (V3 0 0 0)
-
-yaw :: GLfloat -> Camera -> Camera
-yaw x (Camera position orientation) = Camera position orientation
+initialCamera = lookAt (V3 40 40 30) (V3 0 0 0) (V3 0 1 0)
 
 fly :: V3 GLfloat -> Camera -> Camera
 fly direction (Camera position orientation) =
   Camera (position ^+^ rotate orientation direction) orientation
+
+pan :: V2 GLfloat -> Camera -> Camera
+pan (V2 horizontal vertical) (Camera position orientation) =
+  Camera position (orientation * rotation) where
+    rotation = quaternionBetweenVectors negativeZ direction
+    negativeZ = V3 0 0 (-1)
+    direction = V3 horizontal vertical (-1)
 
 cameraMatrix :: Camera -> M44 GLfloat
 cameraMatrix (Camera position orientation) =
@@ -222,8 +233,8 @@ initRenderState = do
   return (RenderState {..})
 
 
-loop :: GLFW.Window -> Double -> RenderState -> Camera -> IO ()
-loop window lastTime renderState camera = do
+loop :: GLFW.Window -> Double -> (Double, Double) -> RenderState -> Camera -> IO ()
+loop window lastTime (lastCursorX, lastCursorY) renderState camera = do
 
   glClear (GL_COLOR_BUFFER_BIT .|. GL_DEPTH_BUFFER_BIT)
 
@@ -233,21 +244,44 @@ loop window lastTime renderState camera = do
 
   _ <- GLFW.pollEvents
 
+  Just currentTime <- GLFW.getTime
+
+  let frameTime = currentTime - lastTime
+
+  printf "Frametime: %4.4f\n" frameTime
+
   keystateW <- GLFW.getKey window GLFW.Key'W
+  keystateA <- GLFW.getKey window GLFW.Key'A
+  keystateS <- GLFW.getKey window GLFW.Key'S
+  keystateD <- GLFW.getKey window GLFW.Key'D
 
-  let movement = case keystateW of
-        GLFW.KeyState'Pressed -> V3 0 0 (-0.1)
-        GLFW.KeyState'Released -> V3 0 0 0
+  (currentCursorX, currentCursorY) <- GLFW.getCursorPos window
+  mouseButtonState <- GLFW.getMouseButton window GLFW.MouseButton'1
+  let differenceCursorX = currentCursorX - lastCursorX
+      differenceCursorY = currentCursorY - lastCursorY
+      mouseScalar = case mouseButtonState of
+        GLFW.MouseButtonState'Pressed -> 1
+        _ -> 0
 
-  let camera' = fly movement camera
+  let cameraMovementSpeed = 10
+      cameraRotationSpeed = 0.001
+      keystateScalar keystate = case keystate of
+        GLFW.KeyState'Pressed -> 1
+        _ -> 0
+      movement = (realToFrac frameTime * cameraMovementSpeed) *^ sum [
+        keystateScalar keystateW *^ V3 0 0 (-1),
+        keystateScalar keystateA *^ V3 (-1) 0 0,
+        keystateScalar keystateS *^ V3 0 0 1,
+        keystateScalar keystateD *^ V3 1 0 0]
+      rotation = (mouseScalar * cameraRotationSpeed) *^
+        fmap realToFrac (V2 differenceCursorX (negate differenceCursorY))
 
-  Just thisTime <- GLFW.getTime
-
-  printf "Frametime: %4.4f\n" (thisTime - lastTime)
+  let camera' = pan rotation (fly movement camera)
 
   shouldClose <- GLFW.windowShouldClose window
 
-  unless shouldClose (loop window thisTime renderState camera')
+  unless shouldClose (
+    loop window currentTime (currentCursorX, currentCursorY) renderState camera')
 
 
 clear :: RenderState -> IO ()
