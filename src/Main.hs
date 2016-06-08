@@ -1,6 +1,8 @@
 {-# language DeriveFunctor, ScopedTypeVariables, RecordWildCards #-}
 module Main where
 
+import Camera (Camera, lookAt, fly, pan, cameraMatrix)
+
 import qualified Graphics.UI.GLFW as GLFW (
   Window,
   init, terminate,
@@ -13,9 +15,7 @@ import Graphics.GL
 
 import Linear (
   V2(V2), V3(V3), (*^), (^+^), (^-^),
-  dot, cross, normalize, quadrance,
-  M44, mkTransformation, perspective, (!*!),
-  Quaternion(Quaternion), rotate)
+  quadrance, M44, perspective, (!*!))
 
 import Foreign.Storable (
   Storable(..), peek, sizeOf)
@@ -26,8 +26,8 @@ import Foreign.Marshal.Array (withArrayLen)
 import Data.Bits ((.|.))
 
 import Text.Printf (printf)
-import Control.Monad (unless,guard)
-import Control.Applicative (liftA3)
+import Control.Monad (unless, guard)
+import Control.Applicative (liftA2, liftA3)
 
 main :: IO ()
 main = do
@@ -41,102 +41,77 @@ main = do
   Just time <- GLFW.getTime
   cursorPos <- GLFW.getCursorPos window
 
-  renderState <- initRenderState
+  glEnable GL_DEPTH_TEST
+  glClearColor 1 1 1 1
 
-  loop window time cursorPos renderState initialCamera
+  chunk <- createChunk 128 ball
 
-  clear renderState
+  loop window time cursorPos initialCamera chunk
+
+  deleteChunk chunk
 
   GLFW.terminate
 
 
-data Camera = Camera {
-  _cameraPosition :: V3 GLfloat,
-  _cameraOrientation :: Quaternion GLfloat }
-    deriving (Show,Eq,Ord)
-
-lookAt :: V3 GLfloat -> V3 GLfloat -> V3 GLfloat -> Camera
-lookAt eye center up = Camera eye orientation where
-  orientation = verticalOrientation * horizontalOrientation
-  verticalOrientation = quaternionBetweenVectors horizontalDirection direction
-  horizontalOrientation = quaternionBetweenVectors negativeZ horizontalDirection
-  negativeZ = V3 0 0 (-1)
-  direction = normalize (center ^-^ eye)
-  horizontalDirection = direction ^-^ (dot up direction *^ up)
-
-quaternionBetweenVectors :: V3 GLfloat -> V3 GLfloat -> Quaternion GLfloat
-quaternionBetweenVectors x y =
-  normalize (1 + Quaternion (dot x y) (cross x y))
-
 initialCamera :: Camera
-initialCamera = lookAt (V3 40 40 30) (V3 0 0 0) (V3 0 1 0)
+initialCamera = lookAt (V3 2 2 2) (V3 0 0 0) (V3 0 1 0)
 
-fly :: V3 GLfloat -> Camera -> Camera
-fly direction (Camera position orientation) =
-  Camera (position ^+^ rotate orientation direction) orientation
+loop :: GLFW.Window -> Double -> (Double, Double) -> Camera -> Chunk -> IO ()
+loop window lastTime (lastCursorX, lastCursorY) camera chunk = do
 
-pan :: V2 GLfloat -> Camera -> Camera
-pan (V2 horizontal vertical) (Camera position orientation) =
-  Camera position (orientation * rotation) where
-    rotation = quaternionBetweenVectors negativeZ direction
-    negativeZ = V3 0 0 (-1)
-    direction = V3 horizontal vertical (-1)
+  glClear (GL_COLOR_BUFFER_BIT .|. GL_DEPTH_BUFFER_BIT)
 
-cameraMatrix :: Camera -> M44 GLfloat
-cameraMatrix (Camera position orientation) =
-  mkTransformation inverseOrientation inversePosition where
-    inverseOrientation = 1 / orientation
-    inversePosition = rotate inverseOrientation (negate position)
+  renderChunk camera chunk
 
-projectionMatrix :: M44 GLfloat
-projectionMatrix = perspective 1 1 0.001 1000
+  GLFW.swapBuffers window
+
+  _ <- GLFW.pollEvents
+
+  Just currentTime <- GLFW.getTime
+
+  let frameTime = currentTime - lastTime
+
+  printf "Frametime: %4.3f\n" frameTime
+
+  keystateW <- GLFW.getKey window GLFW.Key'W
+  keystateA <- GLFW.getKey window GLFW.Key'A
+  keystateS <- GLFW.getKey window GLFW.Key'S
+  keystateD <- GLFW.getKey window GLFW.Key'D
+
+  (currentCursorX, currentCursorY) <- GLFW.getCursorPos window
+  mouseButtonState <- GLFW.getMouseButton window GLFW.MouseButton'1
+  let differenceCursorX = currentCursorX - lastCursorX
+      differenceCursorY = currentCursorY - lastCursorY
+      mouseScalar = case mouseButtonState of
+        GLFW.MouseButtonState'Pressed -> 1
+        _ -> 0
+
+  let cameraMovementSpeed = 1
+      cameraRotationSpeed = 0.001
+      keystateScalar keystate = case keystate of
+        GLFW.KeyState'Pressed -> 1
+        _ -> 0
+      movement = (realToFrac frameTime * cameraMovementSpeed) *^ sum [
+        keystateScalar keystateW *^ V3 0 0 (-1),
+        keystateScalar keystateA *^ V3 (-1) 0 0,
+        keystateScalar keystateS *^ V3 0 0 1,
+        keystateScalar keystateD *^ V3 1 0 0]
+      rotation = (mouseScalar * cameraRotationSpeed) *^
+        fmap realToFrac (V2 differenceCursorX (negate differenceCursorY))
+
+  let camera' = pan rotation (fly movement camera)
+
+  shouldClose <- GLFW.windowShouldClose window
+
+  unless shouldClose (
+    loop window currentTime (currentCursorX, currentCursorY) camera' chunk)
 
 
 type Resolution = Int
 type Volume = V3 GLfloat -> Bool
 
-
 ball :: Volume
-ball x = quadrance (x ^-^ (V3 8 8 8)) < 15 * 15
-
-
-renderVolume :: Camera -> RenderState -> Resolution -> Volume -> IO ()
-renderVolume camera renderState resolution volume = do
-
-  let viewProjectionMatrix = projectionMatrix !*! cameraMatrix camera
-
-  with viewProjectionMatrix (\cameraMatrixPtr ->
-    glUniformMatrix4fv (_cameraMatrixUniform renderState) 1 GL_TRUE (castPtr cameraMatrixPtr))
-
-  sequence_ (do
-    i1 <- [0 .. resolution - 1]
-    i2 <- [0 .. resolution - 1]
-    i3 <- [0 .. resolution - 1]
-    let position = fmap fromIntegral (V3 i1 i2 i3)
-    guard (volume position)
-    return (renderCube renderState position))
-
-
-renderCube :: RenderState -> V3 GLfloat -> IO ()
-renderCube RenderState{..} positionVector = do
-
-  -- render
-  glUseProgram _shaderProgram
-  with positionVector (\positionVectorPtr ->
-    glUniform3fv _positionVectorUniform 1 (castPtr positionVectorPtr))
-  glBindVertexArray _vertexArrayObject
-  let n = fromIntegral (length cubeTriangles)
-  glDrawArrays GL_TRIANGLES 0 (3 * n)
-
-
-
-data RenderState = RenderState {
-  _shaderProgram :: ShaderProgram,
-  _cameraMatrixUniform :: Uniform,
-  _positionVectorUniform :: Uniform,
-  _vertexPositionBufferObject :: VertexBufferObject,
-  _vertexNormalBufferObject :: VertexBufferObject,
-  _vertexArrayObject :: VertexArrayObject }
+ball x = quadrance (x ^-^ (V3 0.5 0.5 0.5)) < 0.5^2
 
 
 type ShaderProgram = GLuint
@@ -145,25 +120,62 @@ type VertexBufferObject = GLuint
 type VertexArrayObject = GLuint
 
 
-initRenderState :: IO RenderState
-initRenderState = do
+data Chunk = Chunk {
+  _numberOfTriangles :: GLuint,
+  _shaderProgram :: ShaderProgram,
+  _cameraMatrixUniform :: Uniform,
+  _vertexPositionBufferObject :: VertexBufferObject,
+  _vertexNormalBufferObject :: VertexBufferObject,
+  _vertexArrayObject :: VertexArrayObject }
 
-  -- global attributes
-  glEnable GL_DEPTH_TEST
-  glClearColor 1 1 1 1
+
+createChunk :: Resolution -> Volume -> IO Chunk
+createChunk resolution filled = do
+
+  let voxelSize = 1 / realToFrac resolution
+      coordinates = map realToFrac [0 .. resolution - 1]
+      voxelPositions = do
+        x1 <- coordinates
+        x2 <- coordinates
+        x3 <- coordinates
+        let voxelPosition = voxelSize *^ (V3 x1 x2 x3)
+            neighbours = do
+              dx1 <- [-voxelSize,voxelSize]
+              dx2 <- [-voxelSize,voxelSize]
+              dx3 <- [-voxelSize,voxelSize]
+              return (voxelPosition ^+^ V3 dx1 dx2 dx3)
+        guard (filled voxelPosition)
+        guard (not (all filled neighbours))
+        return voxelPosition
+
+  let trianglePositions = do
+        voxelPosition <- voxelPositions
+        map (translateTriangle3 voxelPosition)(
+          map (scaleTriangle3 (pure voxelSize)) cubeTriangles)
+      triangleNormals = do
+        voxelPosition <- voxelPositions
+        cubeNormals
+
+  uploadData trianglePositions triangleNormals
+
+uploadData :: [Triangle3 GLfloat] -> [Triangle3 GLfloat] -> IO Chunk
+uploadData trianglePositions triangleNormals = do
+
+  -- number of triangles
+  let _numberOfTriangles = fromIntegral (length trianglePositions)
 
   -- fill position VBO
   _vertexPositionBufferObject <- alloca (\vboPtr -> do
     glGenBuffers 1 vboPtr
     vbo <- peek vboPtr
     glBindBuffer GL_ARRAY_BUFFER vbo
-    withArrayLen cubeTriangles (\len trianglesPtr -> do
+    withArrayLen trianglePositions (\len trianglePositionsPtr -> do
       let sizeOfTriangle = sizeOf (undefined :: Triangle3 GLfloat)
           primitiveDataSize = fromIntegral (len * fromIntegral sizeOfTriangle)
       glBufferData
          GL_ARRAY_BUFFER
          primitiveDataSize
-         (castPtr trianglesPtr)
+         (castPtr trianglePositionsPtr)
          GL_STATIC_DRAW)
     return vbo)
 
@@ -172,7 +184,7 @@ initRenderState = do
     glGenBuffers 1 vboPtr
     vbo <- peek vboPtr
     glBindBuffer GL_ARRAY_BUFFER vbo
-    withArrayLen cubeNormals (\len triangleNormalsPtr -> do
+    withArrayLen triangleNormals (\len triangleNormalsPtr -> do
       let sizeOfTriangle = sizeOf (undefined :: Triangle3 GLfloat)
           primitiveDataSize = fromIntegral (len * fromIntegral sizeOfTriangle)
       glBufferData
@@ -207,11 +219,9 @@ initRenderState = do
   vertexNormalAttribute <- withCString "vertex_normal" (\vertexNormalCString ->
     glGetAttribLocation _shaderProgram vertexNormalCString >>= checkLocationSign)
 
-  -- find uniforms
+  -- find camera uniform
   _cameraMatrixUniform <- withCString "camera_matrix" (\cameraMatrixCString ->
     glGetUniformLocation _shaderProgram cameraMatrixCString)
-  _positionVectorUniform <- withCString "position_vector" (\positionVectorCString ->
-    glGetUniformLocation _shaderProgram positionVectorCString)
 
   -- delete shaders
   glDeleteShader fragmentShader
@@ -230,62 +240,30 @@ initRenderState = do
     glVertexAttribPointer vertexNormalAttribute 3 GL_FLOAT GL_FALSE 0 nullPtr
     return vao)
 
-  return (RenderState {..})
+  return (Chunk {..})
 
 
-loop :: GLFW.Window -> Double -> (Double, Double) -> RenderState -> Camera -> IO ()
-loop window lastTime (lastCursorX, lastCursorY) renderState camera = do
+renderChunk :: Camera -> Chunk -> IO ()
+renderChunk camera Chunk{..} = do
 
-  glClear (GL_COLOR_BUFFER_BIT .|. GL_DEPTH_BUFFER_BIT)
+  --set camera
+  let viewProjectionMatrix = projectionMatrix !*! cameraMatrix camera
+  with viewProjectionMatrix (\cameraMatrixPtr ->
+    glUniformMatrix4fv _cameraMatrixUniform 1 GL_TRUE (castPtr cameraMatrixPtr))
 
-  renderVolume camera renderState 32 ball
-
-  GLFW.swapBuffers window
-
-  _ <- GLFW.pollEvents
-
-  Just currentTime <- GLFW.getTime
-
-  let frameTime = currentTime - lastTime
-
-  printf "Frametime: %4.4f\n" frameTime
-
-  keystateW <- GLFW.getKey window GLFW.Key'W
-  keystateA <- GLFW.getKey window GLFW.Key'A
-  keystateS <- GLFW.getKey window GLFW.Key'S
-  keystateD <- GLFW.getKey window GLFW.Key'D
-
-  (currentCursorX, currentCursorY) <- GLFW.getCursorPos window
-  mouseButtonState <- GLFW.getMouseButton window GLFW.MouseButton'1
-  let differenceCursorX = currentCursorX - lastCursorX
-      differenceCursorY = currentCursorY - lastCursorY
-      mouseScalar = case mouseButtonState of
-        GLFW.MouseButtonState'Pressed -> 1
-        _ -> 0
-
-  let cameraMovementSpeed = 10
-      cameraRotationSpeed = 0.001
-      keystateScalar keystate = case keystate of
-        GLFW.KeyState'Pressed -> 1
-        _ -> 0
-      movement = (realToFrac frameTime * cameraMovementSpeed) *^ sum [
-        keystateScalar keystateW *^ V3 0 0 (-1),
-        keystateScalar keystateA *^ V3 (-1) 0 0,
-        keystateScalar keystateS *^ V3 0 0 1,
-        keystateScalar keystateD *^ V3 1 0 0]
-      rotation = (mouseScalar * cameraRotationSpeed) *^
-        fmap realToFrac (V2 differenceCursorX (negate differenceCursorY))
-
-  let camera' = pan rotation (fly movement camera)
-
-  shouldClose <- GLFW.windowShouldClose window
-
-  unless shouldClose (
-    loop window currentTime (currentCursorX, currentCursorY) renderState camera')
+  -- render
+  glUseProgram _shaderProgram
+  glBindVertexArray _vertexArrayObject
+  let n = fromIntegral _numberOfTriangles
+  glDrawArrays GL_TRIANGLES 0 (3 * n)
 
 
-clear :: RenderState -> IO ()
-clear RenderState{..} = do
+projectionMatrix :: M44 GLfloat
+projectionMatrix = perspective 1 1 0.001 1000
+
+
+deleteChunk :: Chunk -> IO ()
+deleteChunk Chunk{..} = do
 
   -- delete
   glDeleteProgram _shaderProgram
@@ -295,7 +273,6 @@ clear RenderState{..} = do
     glDeleteBuffers 1 vertexBufferObjectPtr)
   with _vertexNormalBufferObject (\vertexBufferObjectPtr -> do
     glDeleteBuffers 1 vertexBufferObjectPtr)
-
 
 
 cubeTriangles :: [Triangle3 GLfloat]
@@ -351,6 +328,14 @@ fragmentShaderSource = "\
 
 data Triangle3 a = Triangle3 !(V3 a) !(V3 a) !(V3 a)
   deriving (Eq,Ord,Show,Read,Functor)
+
+translateTriangle3 :: (Num a) => V3 a -> Triangle3 a -> Triangle3 a
+translateTriangle3 t (Triangle3 a b c) =
+  Triangle3 (a ^+^ t) (b ^+^ t) (c ^+^ t)
+
+scaleTriangle3 :: (Num a) => V3 a -> Triangle3 a -> Triangle3 a
+scaleTriangle3 s (Triangle3 a b c) =
+  Triangle3 (liftA2 (*) s a) (liftA2 (*) s b) (liftA2 (*) s c)
 
 instance (Storable a) => Storable (Triangle3 a) where
   sizeOf _ = 3 * sizeOf (undefined :: V3 a)
