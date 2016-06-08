@@ -111,7 +111,7 @@ type Resolution = Int
 type Volume = V3 GLfloat -> Bool
 
 ball :: Volume
-ball x = quadrance (x ^-^ (V3 0.5 0.5 0.5)) < 0.5^2
+ball x = quadrance (x ^-^ (V3 0.5 0.5 0.5)) < 0.5 * 0.5
 
 
 type ShaderProgram = GLuint
@@ -153,7 +153,7 @@ createChunk resolution filled = do
         map (translateTriangle3 voxelPosition)(
           map (scaleTriangle3 (pure voxelSize)) cubeTriangles)
       triangleNormals = do
-        voxelPosition <- voxelPositions
+        _ <- voxelPositions
         cubeNormals
 
   uploadData trianglePositions triangleNormals
