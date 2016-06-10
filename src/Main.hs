@@ -22,7 +22,7 @@ import Streaming.Prelude (
   Stream, Of)
 import qualified Streaming.Prelude as S (
   map, for, take, iterate, yield,
-  each, toList_)
+  each, toList_, length_)
 
 import Foreign.Storable (
   Storable(..), peek, sizeOf)
@@ -51,7 +51,7 @@ main = do
   glEnable GL_DEPTH_TEST
   glClearColor 1 1 1 1
 
-  chunk <- createChunk 4 ball
+  chunk <- createChunk 8 2 ball
 
   loop window time cursorPos initialCamera chunk
 
@@ -122,20 +122,14 @@ data Cube = Cube GLfloat (V3 GLfloat)
 data Side = Outside | Border | Inside
   deriving (Show, Eq, Ord)
 
-sample :: (Monad m) => Resolution -> (Cube -> Side) -> Stream (Of Cube) m ()
-sample resolution volume = S.for (unitCubes resolution) (\cube1 ->
-  case volume cube1 of
-    Outside -> return ()
-    Inside -> S.yield cube1
-    Border -> S.for (nestedCubes resolution cube1) (\cube2 ->
-      case volume cube2 of
-        Outside -> return ()
-        Inside -> S.yield cube2
-        Border -> S.for (nestedCubes resolution cube2) (\cube3 ->
-          case volume cube3 of
-            Outside -> return ()
-            Inside -> S.yield cube3
-            Border -> return ())))
+sample :: (Monad m) => Int -> Resolution -> (Cube -> Side) -> Cube -> Stream (Of Cube) m ()
+sample depth resolution volume cube
+  | depth == 0 = return ()
+  | otherwise = S.for (nestedCubes resolution cube) (\cube1 ->
+    case volume cube1 of
+      Outside -> return ()
+      Inside -> S.yield cube1
+      Border -> sample (depth - 1) resolution volume cube1)
 
 nestedCubes :: (Monad m) => Resolution -> Cube -> Stream (Of Cube) m ()
 nestedCubes resolution outerCube =
@@ -176,10 +170,12 @@ cubesTriangles cubes =
 cubesNormals :: (Monad m) => Stream (Of Cube) m r -> Stream (Of (Triangle3 GLfloat)) m r
 cubesNormals voxels = S.for voxels (\_ -> S.each cubeNormals)
 
-createChunk :: Resolution -> (Cube -> Side) -> IO Chunk
-createChunk resolution volume = do
+createChunk :: Int -> Resolution -> (Cube -> Side) -> IO Chunk
+createChunk depth resolution volume = do
 
-  let cubes = sample resolution volume
+  let cubes = sample depth resolution volume (Cube 1 (V3 0 0 0))
+
+  S.length_ cubes >>= print
 
   trianglePositions <- S.toList_ (cubesTriangles cubes)
   triangleNormals <- S.toList_ (cubesNormals cubes)
