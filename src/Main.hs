@@ -15,16 +15,16 @@ import Graphics.GL
 
 import Linear (
   V2(V2), V3(V3), (*^), (^+^), (^-^),
+  _x, _y, _z,
   quadrance, M44, perspective, (!*!))
 
-import Data.Array.Repa as Repa (
-  Array, D, U, delay, fromFunction, toList, selectP,
-  DIM1, DIM2, DIM3, ix1, ix3, index, linearIndex,
-  Z(Z), (:.)((:.)), extent, size, inShape,
-  reshape, extend, All(All),
-  map, zipWith)
-import Data.Array.Repa.Repr.Vector (
-  fromListVector)
+import Streaming.Prelude (
+  Stream, Of)
+import qualified Streaming.Prelude as S (
+  filter, map, for, take, enumFrom, yield,
+  each, toList_)
+
+import Control.Lens (over)
 
 import Foreign.Storable (
   Storable(..), peek, sizeOf)
@@ -53,7 +53,7 @@ main = do
   glEnable GL_DEPTH_TEST
   glClearColor 1 1 1 1
 
-  chunk <- createChunk ball
+  chunk <- createChunk 256 ball
 
   loop window time cursorPos initialCamera chunk
 
@@ -117,18 +117,54 @@ loop window lastTime (lastCursorX, lastCursorY) camera chunk = do
 
 
 type Resolution = Int
-type Volume = Array D DIM3 Bool
 
-sample :: Resolution -> (V3 GLfloat -> Bool) -> Volume
+sample :: (Monad m) => Resolution -> (V3 Int -> Bool) -> Stream (Of (V3 Int)) m ()
 sample resolution filled =
-  fromFunction (ix3 resolution resolution resolution) (filled . indexPosition resolution)
+  S.filter (not . all filled . neighbours) (
+    S.filter filled (
+      voxelIndices resolution))
 
-indexPosition :: Resolution -> DIM3 -> V3 GLfloat
-indexPosition resolution (Z :. i1 :. i2 :. i3) = voxelSize *^ (fmap realToFrac (V3 i1 i2 i3)) where
-  voxelSize = 1 / realToFrac resolution
+voxelIndices :: (Monad m) => Resolution -> Stream (Of (V3 Int)) m ()
+voxelIndices resolution = do
+  let range = S.take resolution (S.enumFrom 0)
+  S.for range (\i1 ->
+    S.for range (\i2 ->
+      S.for range (\i3 -> do
+        S.yield (V3 i1 i2 i3))))
 
-ball :: Volume
-ball = sample 256 (\x -> quadrance (x ^-^ (V3 0.5 0.5 0.5)) < 0.5 * 0.5)
+neighbours :: V3 Int -> [V3 Int]
+neighbours i = do
+  coordinate <- [_x, _y, _z]
+  direction <- [(-1), 1]
+  return (over coordinate ((+) direction) i)
+
+ball :: V3 GLfloat -> Bool
+ball x = quadrance (x ^-^ (V3 0.5 0.5 0.5)) < 0.5 * 0.5
+
+indexPosition :: Resolution -> V3 Int -> V3 GLfloat
+indexPosition resolution i = voxelSize *^ (fmap realToFrac i) where
+  voxelSize = recip (realToFrac resolution)
+
+voxelTriangles :: (Monad m) => GLfloat -> Stream (Of (V3 GLfloat)) m r -> Stream (Of (Triangle3 GLfloat)) m r
+voxelTriangles voxelSize voxels =
+  S.for voxels (\position ->
+    S.map (translateTriangle3 position) (
+      S.map (voxelSize *^) (
+        S.each cubeTriangles)))
+
+voxelNormals :: (Monad m) => Stream (Of (V3 GLfloat)) m r -> Stream (Of (Triangle3 GLfloat)) m r
+voxelNormals voxels = S.for voxels (\_ -> S.each cubeNormals)
+
+createChunk :: Resolution -> (V3 GLfloat -> Bool) -> IO Chunk
+createChunk resolution volume = do
+
+  let voxels = sample resolution (volume . indexPosition resolution)
+      voxelPositions = S.map (indexPosition resolution) voxels
+      voxelSize = recip (realToFrac resolution)
+
+  trianglePositions <- S.toList_ (voxelTriangles voxelSize voxelPositions)
+  triangleNormals <- S.toList_ (voxelNormals voxelPositions)
+  uploadData trianglePositions triangleNormals
 
 
 type ShaderProgram = GLuint
@@ -145,56 +181,6 @@ data Chunk = Chunk {
   _vertexNormalBufferObject :: VertexBufferObject,
   _vertexArrayObject :: VertexArrayObject }
 
-
-volumePositions :: Array D DIM3 Bool -> IO (Array U DIM1 (V3 GLfloat))
-volumePositions volume = selectP (linearIndex filled) (linearIndex positions) (size (extent volume)) where
-  positions = fromFunction (extent volume) (indexPosition resolution)
-  Z :. resolution :. _ :. _ = extent volume
-  filled = Repa.zipWith (&&) volume visible
-  visible = Repa.map (not . all (indexWithDefault False volume)) (neighbours (extent volume))
-
-indexWithDefault :: Bool -> Array D DIM3 Bool -> DIM3 -> Bool
-indexWithDefault b array i
-  | inShape (extent array) i = index array i
-  | otherwise = b
-
-neighbours :: DIM3 -> Array D DIM3 [DIM3]
-neighbours shape =
-  fromFunction shape (\(Z :. i1 :. i2 :. i3) ->
-    liftA3 ix3 [i1 - 1, i1 + 1] [i2 - 1, i2 + 1] [i3 - 1, i3 + 1])
-
-trianglesAtPositions :: GLfloat -> Array D DIM1 (V3 GLfloat) -> Array D DIM1 (Triangle3 GLfloat)
-trianglesAtPositions voxelSize positionsArray = flatten (Repa.zipWith translateTriangle3 extendedPositions extendedTriangles) where
-  extendedPositions = extend (Z :. All :. numberOfTriangles) positionsArray
-  extendedTriangles = extend (Z :. numberOfVoxels :. All) scaledCubeTrianglesArray
-  scaledCubeTrianglesArray = Repa.map (voxelSize *^) cubeTrianglesArray
-  cubeTrianglesArray = fromListVector (ix1 numberOfTriangles) cubeTriangles
-  (Z :. numberOfVoxels) = extent positionsArray
-  numberOfTriangles = length cubeTriangles
-
-flatten :: Array D DIM2 a -> Array D DIM1 a
-flatten array = reshape (ix1 (size (extent array))) array
-
-replicateNormals :: Int -> Array D DIM1 (Triangle3 GLfloat)
-replicateNormals n = flatten (extend (Z :. n :. All) (delay cubeTriangleNormalsArray)) where
-  cubeTriangleNormalsArray = fromListVector (ix1 (length cubeNormals)) cubeNormals
-
-createChunk :: Volume -> IO Chunk
-createChunk volume = do
-
-  voxelPositions <- volumePositions volume
-
-  let (Z :. resolution :. _ :. _) = extent volume
-
-      voxelSize = 1 / realToFrac resolution
-
-      trianglePositions = trianglesAtPositions voxelSize (delay voxelPositions)
-
-      (Z :. numberOfVoxels) = extent voxelPositions
-
-      triangleNormals = replicateNormals numberOfVoxels
-
-  uploadData (toList trianglePositions) (toList triangleNormals)
 
 uploadData :: [Triangle3 GLfloat] -> [Triangle3 GLfloat] -> IO Chunk
 uploadData trianglePositions triangleNormals = do
