@@ -15,16 +15,14 @@ import Graphics.GL
 
 import Linear (
   V2(V2), V3(V3), (*^), (^+^), (^-^),
-  _x, _y, _z,
-  quadrance, M44, perspective, (!*!))
+  norm, quadrance,
+  M44, perspective, (!*!))
 
 import Streaming.Prelude (
   Stream, Of)
 import qualified Streaming.Prelude as S (
-  filter, map, for, take, enumFrom, yield,
+  map, for, take, iterate, yield,
   each, toList_)
-
-import Control.Lens (over)
 
 import Foreign.Storable (
   Storable(..), peek, sizeOf)
@@ -53,7 +51,7 @@ main = do
   glEnable GL_DEPTH_TEST
   glClearColor 1 1 1 1
 
-  chunk <- createChunk 256 ball
+  chunk <- createChunk 4 ball
 
   loop window time cursorPos initialCamera chunk
 
@@ -118,52 +116,74 @@ loop window lastTime (lastCursorX, lastCursorY) camera chunk = do
 
 type Resolution = Int
 
-sample :: (Monad m) => Resolution -> (V3 Int -> Bool) -> Stream (Of (V3 Int)) m ()
-sample resolution filled =
-  S.filter (not . all filled . neighbours) (
-    S.filter filled (
-      voxelIndices resolution))
+data Cube = Cube GLfloat (V3 GLfloat)
+  deriving (Show, Eq, Ord)
 
-voxelIndices :: (Monad m) => Resolution -> Stream (Of (V3 Int)) m ()
-voxelIndices resolution = do
-  let range = S.take resolution (S.enumFrom 0)
-  S.for range (\i1 ->
-    S.for range (\i2 ->
-      S.for range (\i3 -> do
-        S.yield (V3 i1 i2 i3))))
+data Side = Outside | Border | Inside
+  deriving (Show, Eq, Ord)
 
-neighbours :: V3 Int -> [V3 Int]
-neighbours i = do
-  coordinate <- [_x, _y, _z]
-  direction <- [(-1), 1]
-  return (over coordinate ((+) direction) i)
+sample :: (Monad m) => Resolution -> (Cube -> Side) -> Stream (Of Cube) m ()
+sample resolution volume = S.for (unitCubes resolution) (\cube1 ->
+  case volume cube1 of
+    Outside -> return ()
+    Inside -> S.yield cube1
+    Border -> S.for (nestedCubes resolution cube1) (\cube2 ->
+      case volume cube2 of
+        Outside -> return ()
+        Inside -> S.yield cube2
+        Border -> S.for (nestedCubes resolution cube2) (\cube3 ->
+          case volume cube3 of
+            Outside -> return ()
+            Inside -> S.yield cube3
+            Border -> return ())))
 
-ball :: V3 GLfloat -> Bool
-ball x = quadrance (x ^-^ (V3 0.5 0.5 0.5)) < 0.5 * 0.5
+nestedCubes :: (Monad m) => Resolution -> Cube -> Stream (Of Cube) m ()
+nestedCubes resolution outerCube =
+  S.map (relative outerCube) (unitCubes resolution)
 
-indexPosition :: Resolution -> V3 Int -> V3 GLfloat
-indexPosition resolution i = voxelSize *^ (fmap realToFrac i) where
-  voxelSize = recip (realToFrac resolution)
+unitCubes :: (Monad m) => Resolution -> Stream (Of Cube) m ()
+unitCubes resolution = do
+  let size = recip (realToFrac resolution)
+      range = S.take resolution (S.iterate ((+) size) 0)
+  S.for range (\x1 ->
+    S.for range (\x2 ->
+      S.for range (\x3 -> do
+        S.yield (Cube size (V3 x1 x2 x3)))))
 
-voxelTriangles :: (Monad m) => GLfloat -> Stream (Of (V3 GLfloat)) m r -> Stream (Of (Triangle3 GLfloat)) m r
-voxelTriangles voxelSize voxels =
-  S.for voxels (\position ->
+relative :: Cube -> Cube -> Cube
+relative (Cube outerSize outerPosition) (Cube innerSize innerPosition) =
+  Cube (outerSize * innerSize) (outerPosition ^+^ (outerSize *^ innerPosition))
+
+ball :: Cube -> Side
+ball (Cube size position)
+  | distance < circleRadius - cubeRadius = Inside
+  | distance > circleRadius + cubeRadius = Outside
+  | otherwise = Border where
+    circleCenter = V3 0.5 0.5 0.5
+    circleRadius = 0.5
+    cubeCenter = position ^+^ halfSize
+    cubeRadius = norm halfSize
+    halfSize = 0.5 *^ (V3 size size size)
+    distance = norm (circleCenter ^-^ cubeCenter)
+
+cubesTriangles :: (Monad m) => Stream (Of Cube) m r -> Stream (Of (Triangle3 GLfloat)) m r
+cubesTriangles cubes =
+  S.for cubes (\(Cube size position) ->
     S.map (translateTriangle3 position) (
-      S.map (voxelSize *^) (
+      S.map (size *^) (
         S.each cubeTriangles)))
 
-voxelNormals :: (Monad m) => Stream (Of (V3 GLfloat)) m r -> Stream (Of (Triangle3 GLfloat)) m r
-voxelNormals voxels = S.for voxels (\_ -> S.each cubeNormals)
+cubesNormals :: (Monad m) => Stream (Of Cube) m r -> Stream (Of (Triangle3 GLfloat)) m r
+cubesNormals voxels = S.for voxels (\_ -> S.each cubeNormals)
 
-createChunk :: Resolution -> (V3 GLfloat -> Bool) -> IO Chunk
+createChunk :: Resolution -> (Cube -> Side) -> IO Chunk
 createChunk resolution volume = do
 
-  let voxels = sample resolution (volume . indexPosition resolution)
-      voxelPositions = S.map (indexPosition resolution) voxels
-      voxelSize = recip (realToFrac resolution)
+  let cubes = sample resolution volume
 
-  trianglePositions <- S.toList_ (voxelTriangles voxelSize voxelPositions)
-  triangleNormals <- S.toList_ (voxelNormals voxelPositions)
+  trianglePositions <- S.toList_ (cubesTriangles cubes)
+  triangleNormals <- S.toList_ (cubesNormals cubes)
+
   uploadData trianglePositions triangleNormals
 
 
