@@ -20,8 +20,12 @@ import Linear (
 
 import Streaming.Prelude (
   Stream, Of)
+import qualified Streaming as S (
+  unfold, concats, mapsM_, streamFold, effect,
+  cutoff)
 import qualified Streaming.Prelude as S (
   map, for, take, iterate, yield,
+  catMaybes,
   each, toList_, length_)
 
 import Foreign.Storable (
@@ -34,7 +38,7 @@ import Data.Bits ((.|.))
 
 import Text.Printf (printf)
 import Control.Monad (unless)
-import Control.Applicative (liftA2, liftA3)
+import Control.Applicative (liftA, liftA2, liftA3)
 
 main :: IO ()
 main = do
@@ -51,7 +55,7 @@ main = do
   glEnable GL_DEPTH_TEST
   glClearColor 1 1 1 1
 
-  chunk <- createChunk 8 2 ball
+  chunk <- createChunk 2 8 ball
 
   loop window time cursorPos initialCamera chunk
 
@@ -123,26 +127,27 @@ data Side = Outside | Border | Inside
   deriving (Show, Eq, Ord)
 
 sample :: (Monad m) => Int -> Resolution -> (Cube -> Side) -> Cube -> Stream (Of Cube) m ()
-sample depth resolution volume cube
-  | depth == 0 = return ()
-  | otherwise = S.for (nestedCubes resolution cube) (\cube1 ->
-    case volume cube1 of
-      Outside -> return ()
-      Inside -> S.yield cube1
-      Border -> sample (depth - 1) resolution volume cube1)
+sample depth resolution volume cube =
+  S.catMaybes (flatten (S.cutoff (depth + 1) (space volume resolution cube)))
 
-nestedCubes :: (Monad m) => Resolution -> Cube -> Stream (Of Cube) m ()
-nestedCubes resolution outerCube =
-  S.map (relative outerCube) (unitCubes resolution)
+space :: (Monad m) => (Cube -> Side) -> Resolution -> Cube -> Stream [] m Cube
+space volume resolution = S.unfold (\cube -> case volume cube of
+  Inside -> return (Left cube)
+  Outside -> return (Right [])
+  Border -> return (Right (nestedCubes resolution cube)))
 
-unitCubes :: (Monad m) => Resolution -> Stream (Of Cube) m ()
+flatten :: (Monad m) => Stream [] m a -> Stream (Of a) m ()
+flatten = S.streamFold S.yield S.effect sequence_
+
+nestedCubes :: Resolution -> Cube -> [Cube]
+nestedCubes resolution cube =
+  map (relative cube) (unitCubes resolution)
+
+unitCubes :: Resolution -> [Cube]
 unitCubes resolution = do
   let size = recip (realToFrac resolution)
-      range = S.take resolution (S.iterate ((+) size) 0)
-  S.for range (\x1 ->
-    S.for range (\x2 ->
-      S.for range (\x3 -> do
-        S.yield (Cube size (V3 x1 x2 x3)))))
+      range = take resolution (iterate ((+) size) 0)
+  liftA (Cube size) (liftA3 V3 range range range)
 
 relative :: Cube -> Cube -> Cube
 relative (Cube outerSize outerPosition) (Cube innerSize innerPosition) =
