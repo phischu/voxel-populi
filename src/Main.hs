@@ -21,12 +21,15 @@ import Linear (
 import Streaming.Prelude (
   Stream, Of)
 import qualified Streaming as S (
-  unfold, concats, mapsM_, streamFold, effect,
+  yields, effect, wrap, unfold, concats, mapsM_, streamFold, effect,
   cutoff)
 import qualified Streaming.Prelude as S (
   map, for, take, iterate, yield,
-  catMaybes,
+  catMaybes, filter,
   each, toList_, length_)
+
+import Data.Array (
+  Array, listArray, array, range)
 
 import Foreign.Storable (
   Storable(..), peek, sizeOf)
@@ -55,7 +58,7 @@ main = do
   glEnable GL_DEPTH_TEST
   glClearColor 1 1 1 1
 
-  chunk <- createChunk 2 8 ball
+  chunk <- createChunk 8 2 ball
 
   loop window time cursorPos initialCamera chunk
 
@@ -119,6 +122,8 @@ loop window lastTime (lastCursorX, lastCursorY) camera chunk = do
 
 
 type Resolution = Int
+type Location = V3 Int
+data Address = Address Resolution Location
 
 data Cube = Cube GLfloat (V3 GLfloat)
   deriving (Show, Eq, Ord)
@@ -126,32 +131,54 @@ data Cube = Cube GLfloat (V3 GLfloat)
 data Side = Outside | Border | Inside
   deriving (Show, Eq, Ord)
 
-sample :: (Monad m) => Int -> Resolution -> (Cube -> Side) -> Cube -> Stream (Of Cube) m ()
-sample depth resolution volume cube =
-  S.catMaybes (flatten (S.cutoff (depth + 1) (space volume resolution cube)))
+type GridTree m a = Stream (Array Location) m a
 
-space :: (Monad m) => (Cube -> Side) -> Resolution -> Cube -> Stream [] m Cube
-space volume resolution = S.unfold (\cube -> case volume cube of
-  Inside -> return (Left cube)
-  Outside -> return (Right [])
-  Border -> return (Right (nestedCubes resolution cube)))
+sample :: (Monad m) => (Cube -> Side) -> Resolution -> Address -> GridTree m (Address,Bool)
+sample volume resolution = S.unfold (\address ->
+  case volume (addressCube address) of
+    Outside -> return (Left (address, False))
+    Inside -> return (Left (address, True))
+    Border -> return (Right (fmap (relativeAddress address) (unitCubes resolution))))
 
-flatten :: (Monad m) => Stream [] m a -> Stream (Of a) m ()
+gridTreeAddress :: (Monad m) => GridTree m a -> Address -> GridTree m (Address, a)
+gridTreeAddress =
+  S.streamFold
+    (\a address -> return (address, a))
+    (\effect address -> S.effect (fmap (applyTo address) effect))
+    (\construct address -> S.wrap (fmap (applyTo address) construct))
+
+applyTo x f = f x
+
+gridTreeCubes :: (Monad m) => GridTree m (Maybe Address) -> Stream (Of Cube) m ()
+gridTreeCubes =
+  S.map addressCube .
+  S.catMaybes .
+  flatten
+
+unitCubes :: Resolution -> Array Location Address
+unitCubes resolution = array locationBounds (zip locations addresses) where
+  locationBounds = (V3 0 0 0, pure resolution - 1)
+  locations = range locationBounds
+  addresses = fmap (Address resolution) locations
+
+unitAddress :: Address
+unitAddress = Address 1 (V3 0 0 0)
+
+relativeAddress :: Address -> Address -> Address
+relativeAddress parentAddress childAddress =
+  Address resolution location where
+    resolution = parentResolution * childResolution
+    location = childResolution *^ parentLocation ^+^ childLocation
+    Address parentResolution parentLocation = parentAddress
+    Address childResolution childLocation = childAddress
+
+addressCube :: Address -> Cube
+addressCube (Address resolution location) = Cube size position where
+  size = recip (realToFrac resolution)
+  position = size *^ fmap realToFrac location
+
+flatten :: (Functor f, Foldable f, Monad m) => Stream f m a -> Stream (Of a) m ()
 flatten = S.streamFold S.yield S.effect sequence_
-
-nestedCubes :: Resolution -> Cube -> [Cube]
-nestedCubes resolution cube =
-  map (relative cube) (unitCubes resolution)
-
-unitCubes :: Resolution -> [Cube]
-unitCubes resolution = do
-  let size = recip (realToFrac resolution)
-      range = take resolution (iterate ((+) size) 0)
-  liftA (Cube size) (liftA3 V3 range range range)
-
-relative :: Cube -> Cube -> Cube
-relative (Cube outerSize outerPosition) (Cube innerSize innerPosition) =
-  Cube (outerSize * innerSize) (outerPosition ^+^ (outerSize *^ innerPosition))
 
 ball :: Cube -> Side
 ball (Cube size position)
@@ -178,7 +205,10 @@ cubesNormals voxels = S.for voxels (\_ -> S.each cubeNormals)
 createChunk :: Int -> Resolution -> (Cube -> Side) -> IO Chunk
 createChunk depth resolution volume = do
 
-  let cubes = sample depth resolution volume (Cube 1 (V3 0 0 0))
+  let gridTree = sample volume resolution unitAddress
+      valid (Just (address, True)) = Just address
+      valid _ = Nothing
+      cubes = gridTreeCubes (fmap valid (S.cutoff (depth + 1) gridTree))
 
   S.length_ cubes >>= print
 
