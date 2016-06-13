@@ -17,7 +17,9 @@ cabal-version:       >=1.10
 
 executable voxel-populi
   main-is:             Main.hs
-  other-modules:       Camera
+  other-modules:       Camera,
+                       Voxel,
+                       Chunk
   -- other-extensions:    
   build-depends:       base >=4.8.2 && <4.9,
                        GLFW-b >=1.4.8.0 && <1.5,

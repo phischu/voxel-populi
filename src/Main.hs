@@ -1,7 +1,12 @@
 {-# language DeriveFunctor, ScopedTypeVariables, RecordWildCards #-}
 module Main where
 
-import Camera (Camera, lookAt, fly, pan, cameraMatrix)
+import Camera (
+  Camera, lookAt, fly, pan)
+import Voxel (
+  Cube(Cube), Side(..), sampleGrid, visibleAddresses)
+import Chunk (
+  Chunk, createChunk, renderChunk, deleteChunk)
 
 import qualified Graphics.UI.GLFW as GLFW (
   Window,
@@ -15,35 +20,33 @@ import Graphics.GL
 
 import Linear (
   V2(V2), V3(V3), (*^), (^+^), (^-^),
-  norm, quadrance,
-  M44, perspective, (!*!))
+  norm)
 
-import Streaming.Prelude (
-  Stream, Of)
-import qualified Streaming as S (
-  yields, effect, wrap, unfold, concats, mapsM_, streamFold, effect,
-  cutoff)
-import qualified Streaming.Internal as S (
-  Stream(..))
-import qualified Streaming.Prelude as S (
-  map, for, mapM, take, iterate, yield,
-  catMaybes, filter,
-  each, fold_, toList_, length_)
-
-import Data.Array (
-  Array, listArray, (!), (//), array, range)
-
-import Foreign.Storable (
-  Storable(..), peek, sizeOf)
-import Foreign.Ptr (castPtr, nullPtr)
-import Foreign.C.String (withCString, peekCString)
-import Foreign.Marshal (alloca, with)
-import Foreign.Marshal.Array (withArrayLen)
 import Data.Bits ((.|.))
 
 import Text.Printf (printf)
-import Control.Monad (unless, join)
-import Control.Applicative (liftA, liftA2, liftA3)
+import Control.Monad (unless)
+
+depth :: Int
+depth = 4
+
+resolution :: Int
+resolution = 2
+
+initialCamera :: Camera
+initialCamera = lookAt (V3 2 2 2) (V3 0 0 0) (V3 0 1 0)
+
+ball :: Cube -> Side
+ball (Cube size position)
+  | distance < circleRadius - cubeRadius = Inside
+  | distance > circleRadius + cubeRadius = Outside
+  | otherwise = Border where
+    circleCenter = V3 0.5 0.5 0.5
+    circleRadius = 0.5
+    cubeCenter = position ^+^ halfSize
+    cubeRadius = norm halfSize
+    halfSize = 0.5 *^ (V3 size size size)
+    distance = norm (circleCenter ^-^ cubeCenter)
 
 main :: IO ()
 main = do
@@ -60,17 +63,14 @@ main = do
   glEnable GL_DEPTH_TEST
   glClearColor 1 1 1 1
 
-  chunk <- createChunk 3 4 ball
+  grid <- sampleGrid depth resolution ball
+  chunk <- createChunk (visibleAddresses grid)
 
   loop window time cursorPos initialCamera chunk
 
   deleteChunk chunk
 
   GLFW.terminate
-
-
-initialCamera :: Camera
-initialCamera = lookAt (V3 2 2 2) (V3 0 0 0) (V3 0 1 0)
 
 loop :: GLFW.Window -> Double -> (Double, Double) -> Camera -> Chunk -> IO ()
 loop window lastTime (lastCursorX, lastCursorY) camera chunk = do
@@ -123,351 +123,3 @@ loop window lastTime (lastCursorX, lastCursorY) camera chunk = do
     loop window currentTime (currentCursorX, currentCursorY) camera' chunk)
 
 
-type Depth = Int
-type Resolution = Int
-type Location = V3 Int
-data Address = Address Resolution Location
-
-data Cube = Cube GLfloat (V3 GLfloat)
-  deriving (Show, Eq, Ord)
-
-data Side = Outside | Border | Inside
-  deriving (Show, Eq, Ord)
-
-data Grid a = Grid Resolution (Array Location a)
-
-emptyGrid :: Resolution -> Grid Bool
-emptyGrid resolution =
-  Grid resolution (listArray locationBounds (repeat False)) where
-    locationBounds = (V3 0 0 0, pure resolution - 1)
-
-getAddress :: (Monad m) => Grid Bool -> Address -> Stream (Of (Address,Bool)) m ()
-getAddress (Grid resolution values) address =
-  S.map (\i -> (Address resolution i, values ! i)) (
-    S.each (addressLocations resolution address))
-
-addressLocations :: Resolution -> Address -> [Location]
-addressLocations resolution (Address addressResolution addressLocation) = do
-    let relativeResolution =
-          resolution `div` addressResolution
-        relativeLocation =
-          fmap (\x -> x * resolution `div` addressResolution) addressLocation
-        locations = [0 .. relativeResolution - 1]
-    i <- liftA3 V3 locations locations locations
-    return (relativeLocation ^+^ i)
-
-setAddress :: Grid Bool -> Address -> Bool -> Grid Bool
-setAddress (Grid resolution values) address value =
-  Grid resolution (values // updates) where
-    updates = zip (addressLocations resolution address) (repeat value)
-
-sampleAddresses :: (Monad m) => (Cube -> Side) -> Depth -> Resolution -> Address -> Stream (Of Address) m ()
-sampleAddresses volume depth resolution address
-  | depth < 0 = return ()
-  | otherwise = case volume (addressCube address) of
-    Outside -> return ()
-    Inside -> S.yield address
-    Border -> S.for (childAddresses resolution address) (\childAddress ->
-      sampleAddresses volume (depth - 1) resolution childAddress)
-
-childAddresses :: (Monad m) => Resolution -> Address -> Stream (Of Address) m ()
-childAddresses resolution address =
-  S.map (relativeAddress address) (S.each (unitCubes resolution))
-
-fromAddresses :: (Monad m) => Resolution -> Stream (Of Address) m r -> m (Grid Bool)
-fromAddresses resolution =
-  S.fold_
-    (\grid address -> setAddress grid address True)
-    (emptyGrid resolution)
-    id
-
-unitCubes :: Resolution -> Array Location Address
-unitCubes resolution = array locationBounds (zip locations addresses) where
-  locationBounds = (V3 0 0 0, pure resolution - 1)
-  locations = range locationBounds
-  addresses = fmap (Address resolution) locations
-
-unitAddress :: Address
-unitAddress = Address 1 (V3 0 0 0)
-
-relativeAddress :: Address -> Address -> Address
-relativeAddress parentAddress childAddress =
-  Address resolution location where
-    resolution = parentResolution * childResolution
-    location = childResolution *^ parentLocation ^+^ childLocation
-    Address parentResolution parentLocation = parentAddress
-    Address childResolution childLocation = childAddress
-
-addressCube :: Address -> Cube
-addressCube (Address resolution location) = Cube size position where
-  size = recip (realToFrac resolution)
-  position = size *^ fmap realToFrac location
-
-flatten :: (Functor f, Foldable f, Monad m) => Stream f m a -> Stream (Of a) m ()
-flatten = S.streamFold S.yield S.effect sequence_
-
-ball :: Cube -> Side
-ball (Cube size position)
-  | distance < circleRadius - cubeRadius = Inside
-  | distance > circleRadius + cubeRadius = Outside
-  | otherwise = Border where
-    circleCenter = V3 0.5 0.5 0.5
-    circleRadius = 0.5
-    cubeCenter = position ^+^ halfSize
-    cubeRadius = norm halfSize
-    halfSize = 0.5 *^ (V3 size size size)
-    distance = norm (circleCenter ^-^ cubeCenter)
-
-cubesTriangles :: (Monad m) => Stream (Of Cube) m r -> Stream (Of (Triangle3 GLfloat)) m r
-cubesTriangles cubes =
-  S.for cubes (\(Cube size position) ->
-    S.map (translateTriangle3 position) (
-      S.map (size *^) (
-        S.each cubeTriangles)))
-
-cubesNormals :: (Monad m) => Stream (Of Cube) m r -> Stream (Of (Triangle3 GLfloat)) m r
-cubesNormals voxels = S.for voxels (\_ -> S.each cubeNormals)
-
-createChunk :: Int -> Resolution -> (Cube -> Side) -> IO Chunk
-createChunk depth resolution volume = do
-
-  gridTree <- fromAddresses (resolution ^ depth) (
-        sampleAddresses volume depth resolution unitAddress)
-  let cubes =
-        S.map addressCube (
-          S.map fst (
-            S.filter snd (getAddress gridTree unitAddress)))
-
-  S.length_ cubes >>= print
-
-  trianglePositions <- S.toList_ (cubesTriangles cubes)
-  triangleNormals <- S.toList_ (cubesNormals cubes)
-
-  uploadData trianglePositions triangleNormals
-
-
-type ShaderProgram = GLuint
-type Uniform = GLint
-type VertexBufferObject = GLuint
-type VertexArrayObject = GLuint
-
-
-data Chunk = Chunk {
-  _numberOfTriangles :: GLuint,
-  _shaderProgram :: ShaderProgram,
-  _cameraMatrixUniform :: Uniform,
-  _vertexPositionBufferObject :: VertexBufferObject,
-  _vertexNormalBufferObject :: VertexBufferObject,
-  _vertexArrayObject :: VertexArrayObject }
-
-
-uploadData :: [Triangle3 GLfloat] -> [Triangle3 GLfloat] -> IO Chunk
-uploadData trianglePositions triangleNormals = do
-
-  -- number of triangles
-  let _numberOfTriangles = fromIntegral (length trianglePositions)
-
-  -- fill position VBO
-  _vertexPositionBufferObject <- alloca (\vboPtr -> do
-    glGenBuffers 1 vboPtr
-    vbo <- peek vboPtr
-    glBindBuffer GL_ARRAY_BUFFER vbo
-    withArrayLen trianglePositions (\len trianglePositionsPtr -> do
-      let sizeOfTriangle = sizeOf (undefined :: Triangle3 GLfloat)
-          primitiveDataSize = fromIntegral (len * fromIntegral sizeOfTriangle)
-      glBufferData
-         GL_ARRAY_BUFFER
-         primitiveDataSize
-         (castPtr trianglePositionsPtr)
-         GL_STATIC_DRAW)
-    return vbo)
-
-  -- fill normal VBO
-  _vertexNormalBufferObject <- alloca (\vboPtr -> do
-    glGenBuffers 1 vboPtr
-    vbo <- peek vboPtr
-    glBindBuffer GL_ARRAY_BUFFER vbo
-    withArrayLen triangleNormals (\len triangleNormalsPtr -> do
-      let sizeOfTriangle = sizeOf (undefined :: Triangle3 GLfloat)
-          primitiveDataSize = fromIntegral (len * fromIntegral sizeOfTriangle)
-      glBufferData
-         GL_ARRAY_BUFFER
-         primitiveDataSize
-         (castPtr triangleNormalsPtr)
-         GL_STATIC_DRAW)
-    return vbo)
-
-  -- create shaders
-  vertexShader <- glCreateShader GL_VERTEX_SHADER
-  withCString vertexShaderSource (\vertexShaderSourceCString -> do
-    with vertexShaderSourceCString (\vertexShaderSourceCStringPtr -> do
-      glShaderSource vertexShader 1 vertexShaderSourceCStringPtr nullPtr))
-  glCompileShader vertexShader
-
-  fragmentShader <- glCreateShader GL_FRAGMENT_SHADER
-  withCString fragmentShaderSource (\fragmentShaderSourceCString -> do
-    with fragmentShaderSourceCString (\fragmentShaderSourceCStringPtr -> do
-      glShaderSource fragmentShader 1 fragmentShaderSourceCStringPtr nullPtr))
-  glCompileShader fragmentShader
-
-  -- create program
-  _shaderProgram <- glCreateProgram
-  glAttachShader _shaderProgram vertexShader
-  glAttachShader _shaderProgram fragmentShader
-  glLinkProgram _shaderProgram
-
-  -- find attributes
-  vertexPositionAttribute <- withCString "vertex_position" (\vertexPositionCString ->
-    glGetAttribLocation _shaderProgram vertexPositionCString >>= checkLocationSign)
-  vertexNormalAttribute <- withCString "vertex_normal" (\vertexNormalCString ->
-    glGetAttribLocation _shaderProgram vertexNormalCString >>= checkLocationSign)
-
-  -- find camera uniform
-  _cameraMatrixUniform <- withCString "camera_matrix" (\cameraMatrixCString ->
-    glGetUniformLocation _shaderProgram cameraMatrixCString)
-
-  -- delete shaders
-  glDeleteShader fragmentShader
-  glDeleteShader vertexShader
-
- -- define VAO
-  _vertexArrayObject <- alloca (\vaoPtr -> do
-    glGenVertexArrays 1 vaoPtr
-    vao <- peek vaoPtr
-    glBindVertexArray vao
-    glEnableVertexAttribArray vertexPositionAttribute
-    glBindBuffer GL_ARRAY_BUFFER _vertexPositionBufferObject
-    glVertexAttribPointer vertexPositionAttribute 3 GL_FLOAT GL_FALSE 0 nullPtr
-    glEnableVertexAttribArray vertexNormalAttribute
-    glBindBuffer GL_ARRAY_BUFFER _vertexNormalBufferObject
-    glVertexAttribPointer vertexNormalAttribute 3 GL_FLOAT GL_FALSE 0 nullPtr
-    return vao)
-
-  return (Chunk {..})
-
-
-renderChunk :: Camera -> Chunk -> IO ()
-renderChunk camera Chunk{..} = do
-
-  --set camera
-  let viewProjectionMatrix = projectionMatrix !*! cameraMatrix camera
-  with viewProjectionMatrix (\cameraMatrixPtr ->
-    glUniformMatrix4fv _cameraMatrixUniform 1 GL_TRUE (castPtr cameraMatrixPtr))
-
-  -- render
-  glUseProgram _shaderProgram
-  glBindVertexArray _vertexArrayObject
-  let n = fromIntegral _numberOfTriangles
-  glDrawArrays GL_TRIANGLES 0 (3 * n)
-
-
-projectionMatrix :: M44 GLfloat
-projectionMatrix = perspective 1 1 0.001 1000
-
-
-deleteChunk :: Chunk -> IO ()
-deleteChunk Chunk{..} = do
-
-  -- delete
-  glDeleteProgram _shaderProgram
-  with _vertexArrayObject (\vertexArrayObjectPtr -> do
-    glDeleteVertexArrays 1 vertexArrayObjectPtr)
-  with _vertexPositionBufferObject (\vertexBufferObjectPtr -> do
-    glDeleteBuffers 1 vertexBufferObjectPtr)
-  with _vertexNormalBufferObject (\vertexBufferObjectPtr -> do
-    glDeleteBuffers 1 vertexBufferObjectPtr)
-
-
-cubeTriangles :: [Triangle3 GLfloat]
-cubeTriangles =
-  faceAtPositionSpannedBy (V3 0 0 0) (V3 0 1 0) (V3 1 0 0) ++
-  faceAtPositionSpannedBy (V3 0 0 1) (V3 1 0 0) (V3 0 1 0) ++
-  faceAtPositionSpannedBy (V3 0 0 0) (V3 0 0 1) (V3 0 1 0) ++
-  faceAtPositionSpannedBy (V3 1 0 0) (V3 0 1 0) (V3 0 0 1) ++
-  faceAtPositionSpannedBy (V3 0 0 0) (V3 1 0 0) (V3 0 0 1) ++
-  faceAtPositionSpannedBy (V3 0 1 0) (V3 0 0 1) (V3 1 0 0)
-
-faceAtPositionSpannedBy :: V3 GLfloat -> V3 GLfloat -> V3 GLfloat -> [Triangle3 GLfloat]
-faceAtPositionSpannedBy p a b = [triangle1, triangle2] where
-  triangle1 = Triangle3 p (p + a) (p + a + b)
-  triangle2 = Triangle3 p (p + a + b) (p + b)
-
-cubeNormals :: [Triangle3 GLfloat]
-cubeNormals = [
-  Triangle3 (V3 0 0 (-1)) (V3 0 0 (-1)) (V3 0 0 (-1)),
-  Triangle3 (V3 0 0 (-1)) (V3 0 0 (-1)) (V3 0 0 (-1)),
-  Triangle3 (V3 0 0 1) (V3 0 0 1) (V3 0 0 1),
-  Triangle3 (V3 0 0 1) (V3 0 0 1) (V3 0 0 1),
-  Triangle3 (V3 (-1) 0 0) (V3 (-1) 0 0) (V3 (-1) 0 0),
-  Triangle3 (V3 (-1) 0 0) (V3 (-1) 0 0) (V3 (-1) 0 0),
-  Triangle3 (V3 1 0 0) (V3 1 0 0) (V3 1 0 0),
-  Triangle3 (V3 1 0 0) (V3 1 0 0) (V3 1 0 0),
-  Triangle3 (V3 0 (-1) 0) (V3 0 (-1) 0) (V3 0 (-1) 0),
-  Triangle3 (V3 0 (-1) 0) (V3 0 (-1) 0) (V3 0 (-1) 0),
-  Triangle3 (V3 0 1 0) (V3 0 1 0) (V3 0 1 0),
-  Triangle3 (V3 0 1 0) (V3 0 1 0) (V3 0 1 0)]
-
-vertexShaderSource :: String
-vertexShaderSource = "\
-\#version 130\n\
-\uniform mat4 camera_matrix;\
-\uniform vec3 position_vector;\
-\in vec3 vertex_position;\
-\in vec3 vertex_normal;\
-\out vec3 color;\
-\void main () {\
-\  gl_Position = camera_matrix * vec4 (position_vector + vertex_position, 1.0);\
-\  color = vertex_normal;\
-\}"
-
-fragmentShaderSource :: String
-fragmentShaderSource = "\
-\#version 130\n\
-\in vec3 color;\
-\out vec4 frag_colour;\
-\void main () {\
-\  frag_colour = vec4 (0.5 * (vec3(1, 1, 1) + color), 1.0);\
-\}"
-
-data Triangle3 a = Triangle3 !(V3 a) !(V3 a) !(V3 a)
-  deriving (Eq,Ord,Show,Read,Functor)
-
-translateTriangle3 :: (Num a) => V3 a -> Triangle3 a -> Triangle3 a
-translateTriangle3 t (Triangle3 a b c) =
-  Triangle3 (a ^+^ t) (b ^+^ t) (c ^+^ t)
-
-scaleTriangle3 :: (Num a) => V3 a -> Triangle3 a -> Triangle3 a
-scaleTriangle3 s (Triangle3 a b c) =
-  Triangle3 (liftA2 (*) s a) (liftA2 (*) s b) (liftA2 (*) s c)
-
-instance (Storable a) => Storable (Triangle3 a) where
-  sizeOf _ = 3 * sizeOf (undefined :: V3 a)
-  alignment _ = alignment (undefined :: V3 a)
-  poke ptr (Triangle3 a b c) =
-    poke ptr' a >> pokeElemOff ptr' 1 b >> pokeElemOff ptr' 2 c
-      where ptr' = castPtr ptr
-  peek ptr =
-    liftA3 Triangle3 (peek ptr') (peekElemOff ptr' 1) (peekElemOff ptr' 2)
-      where ptr' = castPtr ptr
-
-
-checkLocationSign :: GLint -> IO GLuint
-checkLocationSign attributeLocation = if attributeLocation < 0
-  then error "Attribute location not found"
-  else return (fromIntegral attributeLocation)
-
-checkError :: IO ()
-checkError = do
-  errorCode <- glGetError
-  print errorCode
-
-
-checkShaderErrors :: ShaderProgram -> IO ()
-checkShaderErrors shaderProgram = withCString longString (\shaderErrorCString -> do
-  with 12 (\shaderErrorLengthPtr -> do
-    glGetProgramInfoLog shaderProgram 100 shaderErrorLengthPtr shaderErrorCString
-    shaderError <- peekCString shaderErrorCString
-    putStrLn shaderError))
-
-longString :: String
-longString = take 100 (repeat 'a')
