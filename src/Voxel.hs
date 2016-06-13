@@ -1,6 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
 module Voxel where
-
-import Graphics.GL
 
 import Linear (
   V3(V3), (*^), (^+^))
@@ -14,6 +13,11 @@ import qualified Streaming.Prelude as S (
 import Data.Array (
   Array, listArray, (!), (//), array, range)
 
+import Control.DeepSeq (
+  NFData)
+import GHC.Generics (
+  Generic)
+
 import Control.Applicative (liftA3)
 
 
@@ -22,14 +26,16 @@ type Resolution = Int
 type Location = V3 Int
 data Address = Address Resolution Location
 
-data Cube = Cube GLfloat (V3 GLfloat)
+data Cube = Cube Float (V3 Float)
   deriving (Show, Eq, Ord)
 
 data Side = Outside | Border | Inside
   deriving (Show, Eq, Ord)
 
-data Grid a = Grid Resolution (Array Location a)
+data Grid a = Grid !Resolution !(Array Location a)
+  deriving (Generic)
 
+instance (NFData a) => NFData (Grid a)
 
 sampleGrid :: (Monad m) => Depth -> Resolution -> (Cube -> Side) -> m (Grid Bool)
 sampleGrid depth resolution volume =
