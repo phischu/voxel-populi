@@ -3,7 +3,7 @@ module Main where
 import Voxel (sampleGrid, Cube(Cube), Side(..))
 
 import Criterion (
-  bgroup, bench, nfIO)
+  bgroup, bench, whnfIO)
 import Criterion.Main (
   defaultMain)
 
@@ -15,9 +15,9 @@ import Linear (
 main :: IO ()
 main = defaultMain [
   bgroup "sampleGrid" [
-    bench "sampleGrid-2-2" (nfIO (sampleGrid 2 2 ball)),
-    bench "sampleGrid-6-2" (nfIO (sampleGrid 6 2 ball)),
-    bench "sampleGrid-2-8" (nfIO (sampleGrid 2 8 ball))]]
+    bench "sampleGrid-2-2" (whnfIO (sampleGrid 2 2 ball)),
+    bench "sampleGrid-6-2" (whnfIO (sampleGrid 6 2 ball)),
+    bench "sampleGrid-2-8" (whnfIO (sampleGrid 2 8 ball))]]
 
 ball :: Cube -> Side
 ball (Cube size position)

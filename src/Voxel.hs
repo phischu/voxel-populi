@@ -8,16 +8,12 @@ import Streaming.Prelude (
   Stream, Of)
 
 import qualified Streaming.Prelude as S (
-  map, filter, for, yield, each, fold_)
+  map, filter, for, mapM, yield, each, foldM_)
 
-import Data.Array (
-  Array, listArray, (!), (//), array, range)
+import Data.Array.IO (
+  IOArray, newArray, writeArray, readArray)
 
-import Control.DeepSeq (
-  NFData)
-import GHC.Generics (
-  Generic)
-
+import Data.Foldable (for_)
 import Control.Applicative (liftA3)
 
 
@@ -32,12 +28,10 @@ data Cube = Cube Float (V3 Float)
 data Side = Outside | Border | Inside
   deriving (Show, Eq, Ord)
 
-data Grid a = Grid !Resolution !(Array Location a)
-  deriving (Generic)
+data Grid a = Grid !Resolution !(IOArray Location a)
 
-instance (NFData a) => NFData (Grid a)
 
-sampleGrid :: (Monad m) => Depth -> Resolution -> (Cube -> Side) -> m (Grid Bool)
+sampleGrid :: Depth -> Resolution -> (Cube -> Side) -> IO (Grid Bool)
 sampleGrid depth resolution volume =
   fromAddresses (resolution ^ depth) (
     sampleAddresses depth resolution volume unitAddress)
@@ -51,32 +45,36 @@ sampleAddresses depth resolution volume address
     Border -> S.for (childAddresses resolution address) (\childAddress ->
       sampleAddresses (depth - 1) resolution volume childAddress)
 
-fromAddresses :: (Monad m) => Resolution -> Stream (Of Address) m r -> m (Grid Bool)
+fromAddresses :: Resolution -> Stream (Of Address) IO r -> IO (Grid Bool)
 fromAddresses resolution =
-  S.fold_
+  S.foldM_
     (\grid address -> setAddress grid address True)
     (emptyGrid resolution)
-    id
+    return
 
-emptyGrid :: Resolution -> Grid Bool
-emptyGrid resolution =
-  Grid resolution (listArray locationBounds (repeat False)) where
-    locationBounds = (V3 0 0 0, pure resolution - 1)
+emptyGrid :: Resolution -> IO (Grid Bool)
+emptyGrid resolution = do
+  let locationBounds = (V3 0 0 0, pure resolution - 1)
+  values <- newArray locationBounds False
+  return (Grid resolution values)
 
-setAddress :: Grid Bool -> Address -> Bool -> Grid Bool
-setAddress (Grid resolution values) address value =
-  Grid resolution (values // updates) where
-    updates = zip (addressLocations resolution address) (repeat value)
+setAddress :: Grid Bool -> Address -> Bool -> IO (Grid Bool)
+setAddress (Grid resolution values) address value = do
+  for_ (addressLocations resolution address) (\location ->
+    writeArray values location value)
+  return (Grid resolution values)
 
-visibleAddresses :: (Monad m) => Grid Bool -> Stream (Of Address) m ()
+visibleAddresses :: Grid Bool -> Stream (Of Address) IO ()
 visibleAddresses grid =
   S.map fst (
     S.filter snd (
       getAddress grid unitAddress))
 
-getAddress :: (Monad m) => Grid Bool -> Address -> Stream (Of (Address,Bool)) m ()
+getAddress :: Grid Bool -> Address -> Stream (Of (Address,Bool)) IO ()
 getAddress (Grid resolution values) address =
-  S.map (\i -> (Address resolution i, values ! i)) (
+  S.mapM (\i -> do
+    value <- readArray values i
+    return (Address resolution i, value)) (
     S.each (addressLocations resolution address))
 
 addressLocations :: Resolution -> Address -> [Location]
@@ -93,11 +91,11 @@ childAddresses :: (Monad m) => Resolution -> Address -> Stream (Of Address) m ()
 childAddresses resolution address =
   S.map (relativeAddress address) (S.each (unitCubes resolution))
 
-unitCubes :: Resolution -> Array Location Address
-unitCubes resolution = array locationBounds (zip locations addresses) where
-  locationBounds = (V3 0 0 0, pure resolution - 1)
-  locations = range locationBounds
-  addresses = fmap (Address resolution) locations
+unitCubes :: Resolution -> [Address]
+unitCubes resolution = do
+  let locations = [0 .. resolution - 1]
+  i <- liftA3 V3 locations locations locations
+  return (Address resolution i)
 
 unitAddress :: Address
 unitAddress = Address 1 (V3 0 0 0)

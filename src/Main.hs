@@ -28,7 +28,7 @@ import Text.Printf (printf)
 import Control.Monad (unless)
 
 depth :: Int
-depth = 4
+depth = 6
 
 resolution :: Int
 resolution = 2
