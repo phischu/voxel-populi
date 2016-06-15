@@ -1,3 +1,4 @@
+{-# language DeriveGeneric #-}
 module Grid where
 
 import Voxel (
@@ -16,12 +17,16 @@ import qualified Streaming.Prelude as S (
 import Data.Array.IO (
   IOArray, newArray, writeArray, readArray)
 
+import Control.DeepSeq (NFData(rnf))
+
 import Data.Foldable (for_)
 import Control.Applicative (liftA3)
 
 
 data Grid a = Grid !Resolution !(IOArray Location a)
 
+instance (NFData a) => NFData (Grid a) where
+  rnf (Grid _ _) = ()
 
 fromVoxels :: Resolution -> Stream (Of Voxel) IO r -> IO (Grid Bool)
 fromVoxels resolution =

@@ -1,12 +1,15 @@
 module Main where
 
 import Voxel (
-  Cube(Cube), Side(..), volumeVoxels, unitVoxel)
+  Voxel(Voxel), Cube(Cube), Side(..), volumeVoxels, unitVoxel)
 import Grid (
-  fromVoxels)
+  fromVoxels, setVoxel, getVoxels)
+
+import qualified Streaming.Prelude as S (
+  effects)
 
 import Criterion (
-  bgroup, bench, whnfIO)
+  bgroup, bench, env, whnfIO)
 import Criterion.Main (
   defaultMain)
 
@@ -22,9 +25,14 @@ main = do
       voxelsLarge = volumeVoxels 2 8 ball unitVoxel
   defaultMain [
     bgroup "Grid" [
-      bench "fromVoxels-small" (whnfIO (fromVoxels 4 voxelsSmall)),
-      bench "fromVoxels-medium" (whnfIO (fromVoxels 64 voxelsMedium)),
-      bench "fromVoxels-large" (whnfIO (fromVoxels 64 voxelsLarge))]]
+      bgroup "fromVoxels" [
+        bench "fromVoxels-small" (whnfIO (fromVoxels 4 voxelsSmall)),
+        bench "fromVoxels-medium" (whnfIO (fromVoxels 64 voxelsMedium)),
+        bench "fromVoxels-large" (whnfIO (fromVoxels 64 voxelsLarge))],
+      env (fromVoxels 64 voxelsMedium) (\grid ->
+          bench "setVoxel" (whnfIO (setVoxel grid voxelToSet True))),
+      env (fromVoxels 64 voxelsMedium) (\grid ->
+          bench "getVoxels" (whnfIO (S.effects (getVoxels grid voxelToGet))))]]
 
 ball :: Cube -> Side
 ball (Cube size position)
@@ -37,4 +45,10 @@ ball (Cube size position)
     cubeRadius = norm halfSize
     halfSize = 0.5 *^ (V3 size size size)
     distance = norm (circleCenter ^-^ cubeCenter)
+
+voxelToSet :: Voxel
+voxelToSet = Voxel 16 (V3 1 1 1)
+
+voxelToGet :: Voxel
+voxelToGet = Voxel 4 (V3 1 1 1)
 
