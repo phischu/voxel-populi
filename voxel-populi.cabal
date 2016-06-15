@@ -19,7 +19,7 @@ executable voxel-populi
   main-is:             Main.hs
   other-modules:       Camera,
                        Voxel,
-                       Chunk,
+                       Mesh,
                        Grid,
                        Octree
   -- other-extensions:    

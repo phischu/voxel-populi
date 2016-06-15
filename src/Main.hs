@@ -6,9 +6,9 @@ import Camera (
 import Voxel (
   Cube(Cube), Side(..), volumeVoxels, unitVoxel)
 import Octree (
-  fromVoxels, visibleVoxels)
-import Chunk (
-  Chunk, createChunk, renderChunk, deleteChunk)
+  fromVoxels, octreeMesh)
+import Mesh (
+  GPUMesh, createGPUMesh, renderGPUMesh, deleteGPUMesh)
 
 import qualified Graphics.UI.GLFW as GLFW (
   Window,
@@ -24,16 +24,13 @@ import Linear (
   V2(V2), V3(V3), (*^), (^+^), (^-^),
   norm)
 
-import qualified Streaming.Prelude as S (
-  each)
-
 import Data.Bits ((.|.))
 
 import Text.Printf (printf)
 import Control.Monad (unless)
 
 depth :: Int
-depth = 5
+depth = 6
 
 resolution :: Int
 resolution = 2
@@ -70,20 +67,20 @@ main = do
 
   let voxels = volumeVoxels depth resolution ball unitVoxel
       octree = fromVoxels voxels
-  chunk <- createChunk (S.each (visibleVoxels octree))
+  gpuMesh <- createGPUMesh (octreeMesh octree)
 
-  loop window time cursorPos initialCamera chunk
+  loop window time cursorPos initialCamera gpuMesh
 
-  deleteChunk chunk
+  deleteGPUMesh gpuMesh
 
   GLFW.terminate
 
-loop :: GLFW.Window -> Double -> (Double, Double) -> Camera -> Chunk -> IO ()
-loop window lastTime (lastCursorX, lastCursorY) camera chunk = do
+loop :: GLFW.Window -> Double -> (Double, Double) -> Camera -> GPUMesh -> IO ()
+loop window lastTime (lastCursorX, lastCursorY) camera gpuMesh = do
 
   glClear (GL_COLOR_BUFFER_BIT .|. GL_DEPTH_BUFFER_BIT)
 
-  renderChunk camera chunk
+  renderGPUMesh camera gpuMesh
 
   GLFW.swapBuffers window
 
@@ -126,6 +123,6 @@ loop window lastTime (lastCursorX, lastCursorY) camera chunk = do
   shouldClose <- GLFW.windowShouldClose window
 
   unless shouldClose (
-    loop window currentTime (currentCursorX, currentCursorY) camera' chunk)
+    loop window currentTime (currentCursorX, currentCursorY) camera' gpuMesh)
 
 

@@ -2,8 +2,8 @@
 module Grid where
 
 import Voxel (
-  Voxel(Voxel), Resolution, Location,
-  unitVoxel)
+  Voxel(Voxel), Resolution, Location, unitVoxel,
+  Face)
 
 import Linear (
   V3(V3), (^+^))
@@ -54,12 +54,6 @@ getVoxels (Grid resolution values) address =
     return (Voxel resolution i, value)) (
       S.each (voxelLocations resolution address))
 
-visibleVoxels :: Grid Bool -> Stream (Of Voxel) IO ()
-visibleVoxels grid =
-  S.map fst (
-    S.filter snd (
-      getVoxels grid unitVoxel))
-
 voxelLocations :: Resolution -> Voxel -> [Location]
 voxelLocations resolution (Voxel voxelResolution voxelLocation) = do
     let relativeResolution =
@@ -69,4 +63,13 @@ voxelLocations resolution (Voxel voxelResolution voxelLocation) = do
         locations = [0 .. relativeResolution - 1]
     i <- liftA3 V3 locations locations locations
     return (relativeLocation ^+^ i)
+
+visibleVoxels :: Grid Bool -> Stream (Of Voxel) IO ()
+visibleVoxels grid =
+  S.map fst (
+    S.filter snd (
+      getVoxels grid unitVoxel))
+
+voxelMesh :: Grid Bool -> Stream (Of Face) IO ()
+voxelMesh = undefined
 

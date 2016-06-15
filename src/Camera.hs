@@ -1,8 +1,9 @@
 module Camera where
 
 import Linear (
-  V2(V2), V3(V3), (*^), (^+^), (^-^),
-  dot, cross, normalize,
+  V2(V2), V3(V3), (^+^), (^-^),
+  unit, _y, _z,
+  dot, cross, normalize, project,
   M44, mkTransformation,
   Quaternion(Quaternion), rotate)
 
@@ -15,12 +16,12 @@ data Camera = Camera {
 
 lookAt :: V3 GLfloat -> V3 GLfloat -> V3 GLfloat -> Camera
 lookAt eye center up = Camera eye orientation where
-  orientation = verticalOrientation * horizontalOrientation
-  verticalOrientation = quaternionBetweenVectors horizontalDirection direction
-  horizontalOrientation = quaternionBetweenVectors negativeZ horizontalDirection
-  negativeZ = V3 0 0 (-1)
+  orientation = upOrientation * centerOrientation
+  centerOrientation = quaternionBetweenVectors (negate (unit _z)) direction
+  upOrientation = quaternionBetweenVectors rotatedUp wantedUp
+  rotatedUp = rotate centerOrientation (unit _y)
+  wantedUp = up ^-^ project direction up
   direction = normalize (center ^-^ eye)
-  horizontalDirection = direction ^-^ (dot up direction *^ up)
 
 quaternionBetweenVectors :: V3 GLfloat -> V3 GLfloat -> Quaternion GLfloat
 quaternionBetweenVectors x y =

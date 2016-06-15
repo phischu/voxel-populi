@@ -1,28 +1,34 @@
 {-# LANGUAGE DeriveFunctor, RecordWildCards, ScopedTypeVariables #-}
-module Chunk where
+module Mesh where
 
-import Voxel (voxelCube, Voxel, Cube(Cube))
+import Voxel (Face(Face))
 import Camera (Camera, cameraMatrix)
 
 import Graphics.GL
 
 import Linear (
-  V3(V3), (*^), (^+^),
-  M44, perspective, (!*!))
+  V3, (^+^), (*^),
+  M44, perspective, (!*!),
+  cross, norm)
 
 import Streaming.Prelude (
   Stream, Of)
 import qualified Streaming.Prelude as S (
-  map, for, each, toList_, length_)
+  for, each, toList_, length_)
 
 import Foreign.Storable (
   Storable(..), peek, sizeOf)
-import Foreign.Ptr (castPtr, nullPtr)
-import Foreign.C.String (withCString, peekCString)
-import Foreign.Marshal (alloca, with)
-import Foreign.Marshal.Array (withArrayLen)
+import Foreign.Ptr (
+  castPtr, nullPtr)
+import Foreign.C.String (
+  withCString, peekCString)
+import Foreign.Marshal (
+  alloca, with)
+import Foreign.Marshal.Array (
+  withArrayLen)
 
-import Control.Applicative (liftA2, liftA3)
+import Control.Applicative (
+  liftA2, liftA3)
 
 
 type ShaderProgram = GLuint
@@ -31,7 +37,7 @@ type VertexBufferObject = GLuint
 type VertexArrayObject = GLuint
 
 
-data Chunk = Chunk {
+data GPUMesh = GPUMesh {
   _numberOfTriangles :: GLuint,
   _shaderProgram :: ShaderProgram,
   _cameraMatrixUniform :: Uniform,
@@ -40,31 +46,41 @@ data Chunk = Chunk {
   _vertexArrayObject :: VertexArrayObject }
 
 
-createChunk :: Stream (Of Voxel) IO () -> IO Chunk
-createChunk voxels = do
+createGPUMesh :: Stream (Of Face) IO () -> IO GPUMesh
+createGPUMesh faces = do
 
-  let cubes = S.map voxelCube voxels
+  S.length_ faces >>= print
 
-  S.length_ cubes >>= print
-
-  trianglePositions <- S.toList_ (cubesTriangles cubes)
-  triangleNormals <- S.toList_ (cubesNormals cubes)
+  trianglePositions <- S.toList_ (facesTriangles faces)
+  triangleNormals <- S.toList_ (facesNormals faces)
 
   uploadData trianglePositions triangleNormals
 
 
-cubesTriangles :: (Monad m) => Stream (Of Cube) m r -> Stream (Of (Triangle3 GLfloat)) m r
-cubesTriangles cubes =
-  S.for cubes (\(Cube size position) ->
-    S.map (translateTriangle3 position) (
-      S.map (size *^) (
-        S.each cubeTriangles)))
-
-cubesNormals :: (Monad m) => Stream (Of Cube) m r -> Stream (Of (Triangle3 GLfloat)) m r
-cubesNormals voxels = S.for voxels (\_ -> S.each cubeNormals)
+facesTriangles :: (Monad m) => Stream (Of Face) m r -> Stream (Of (Triangle3 GLfloat)) m r
+facesTriangles faces = S.for faces (\(Face position side1 side2) ->
+  S.each (faceAtPositionSpannedBy position side1 side2))
 
 
-uploadData :: [Triangle3 GLfloat] -> [Triangle3 GLfloat] -> IO Chunk
+facesNormals :: (Monad m) => Stream (Of Face) m r -> Stream (Of (Triangle3 GLfloat)) m r
+facesNormals faces = S.for faces (\(Face _ side1 side2) ->
+  S.each (faceTriangleNormals side1 side2))
+
+
+faceAtPositionSpannedBy :: V3 GLfloat -> V3 GLfloat -> V3 GLfloat -> [Triangle3 GLfloat]
+faceAtPositionSpannedBy p a b = [triangle1, triangle2] where
+  triangle1 = Triangle3 p (p + a) (p + a + b)
+  triangle2 = Triangle3 p (p + a + b) (p + b)
+
+
+faceTriangleNormals :: V3 GLfloat -> V3 GLfloat -> [Triangle3 GLfloat]
+faceTriangleNormals side1 side2 = [triangleNormals, triangleNormals] where
+  triangleNormals = Triangle3 normal normal normal
+  unnormalizedNormal = side1 `cross` side2
+  normal = recip (norm unnormalizedNormal) *^ unnormalizedNormal
+
+
+uploadData :: [Triangle3 GLfloat] -> [Triangle3 GLfloat] -> IO GPUMesh
 uploadData trianglePositions triangleNormals = do
 
   -- number of triangles
@@ -146,11 +162,11 @@ uploadData trianglePositions triangleNormals = do
     glVertexAttribPointer vertexNormalAttribute 3 GL_FLOAT GL_FALSE 0 nullPtr
     return vao)
 
-  return (Chunk {..})
+  return (GPUMesh {..})
 
 
-renderChunk :: Camera -> Chunk -> IO ()
-renderChunk camera Chunk{..} = do
+renderGPUMesh :: Camera -> GPUMesh -> IO ()
+renderGPUMesh camera GPUMesh{..} = do
 
   --set camera
   let viewProjectionMatrix = projectionMatrix !*! cameraMatrix camera
@@ -168,8 +184,8 @@ projectionMatrix :: M44 GLfloat
 projectionMatrix = perspective 1 1 0.001 1000
 
 
-deleteChunk :: Chunk -> IO ()
-deleteChunk Chunk{..} = do
+deleteGPUMesh :: GPUMesh -> IO ()
+deleteGPUMesh GPUMesh{..} = do
 
   -- delete
   glDeleteProgram _shaderProgram
@@ -179,36 +195,6 @@ deleteChunk Chunk{..} = do
     glDeleteBuffers 1 vertexBufferObjectPtr)
   with _vertexNormalBufferObject (\vertexBufferObjectPtr -> do
     glDeleteBuffers 1 vertexBufferObjectPtr)
-
-
-cubeTriangles :: [Triangle3 GLfloat]
-cubeTriangles =
-  faceAtPositionSpannedBy (V3 0 0 0) (V3 0 1 0) (V3 1 0 0) ++
-  faceAtPositionSpannedBy (V3 0 0 1) (V3 1 0 0) (V3 0 1 0) ++
-  faceAtPositionSpannedBy (V3 0 0 0) (V3 0 0 1) (V3 0 1 0) ++
-  faceAtPositionSpannedBy (V3 1 0 0) (V3 0 1 0) (V3 0 0 1) ++
-  faceAtPositionSpannedBy (V3 0 0 0) (V3 1 0 0) (V3 0 0 1) ++
-  faceAtPositionSpannedBy (V3 0 1 0) (V3 0 0 1) (V3 1 0 0)
-
-faceAtPositionSpannedBy :: V3 GLfloat -> V3 GLfloat -> V3 GLfloat -> [Triangle3 GLfloat]
-faceAtPositionSpannedBy p a b = [triangle1, triangle2] where
-  triangle1 = Triangle3 p (p + a) (p + a + b)
-  triangle2 = Triangle3 p (p + a + b) (p + b)
-
-cubeNormals :: [Triangle3 GLfloat]
-cubeNormals = [
-  Triangle3 (V3 0 0 (-1)) (V3 0 0 (-1)) (V3 0 0 (-1)),
-  Triangle3 (V3 0 0 (-1)) (V3 0 0 (-1)) (V3 0 0 (-1)),
-  Triangle3 (V3 0 0 1) (V3 0 0 1) (V3 0 0 1),
-  Triangle3 (V3 0 0 1) (V3 0 0 1) (V3 0 0 1),
-  Triangle3 (V3 (-1) 0 0) (V3 (-1) 0 0) (V3 (-1) 0 0),
-  Triangle3 (V3 (-1) 0 0) (V3 (-1) 0 0) (V3 (-1) 0 0),
-  Triangle3 (V3 1 0 0) (V3 1 0 0) (V3 1 0 0),
-  Triangle3 (V3 1 0 0) (V3 1 0 0) (V3 1 0 0),
-  Triangle3 (V3 0 (-1) 0) (V3 0 (-1) 0) (V3 0 (-1) 0),
-  Triangle3 (V3 0 (-1) 0) (V3 0 (-1) 0) (V3 0 (-1) 0),
-  Triangle3 (V3 0 1 0) (V3 0 1 0) (V3 0 1 0),
-  Triangle3 (V3 0 1 0) (V3 0 1 0) (V3 0 1 0)]
 
 vertexShaderSource :: String
 vertexShaderSource = "\

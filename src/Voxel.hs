@@ -17,6 +17,9 @@ data Voxel = Voxel Resolution Location
 data Cube = Cube Float (V3 Float)
   deriving (Show, Eq, Ord)
 
+data Face = Face (V3 Float) (V3 Float) (V3 Float)
+  deriving (Show, Eq, Ord)
+
 data Side = Outside | Border | Inside
   deriving (Show, Eq, Ord)
 
@@ -60,4 +63,3 @@ voxelCube :: Voxel -> Cube
 voxelCube (Voxel resolution location) = Cube size position where
   size = recip (realToFrac resolution)
   position = size *^ fmap realToFrac location
-
