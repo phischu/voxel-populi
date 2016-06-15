@@ -1,6 +1,9 @@
 module Main where
 
-import Voxel (sampleGrid, Cube(Cube), Side(..))
+import Voxel (
+  Cube(Cube), Side(..), volumeVoxels, unitVoxel)
+import Grid (
+  fromVoxels)
 
 import Criterion (
   bgroup, bench, whnfIO)
@@ -13,11 +16,15 @@ import Linear (
 
 
 main :: IO ()
-main = defaultMain [
-  bgroup "sampleGrid" [
-    bench "sampleGrid-2-2" (whnfIO (sampleGrid 2 2 ball)),
-    bench "sampleGrid-6-2" (whnfIO (sampleGrid 6 2 ball)),
-    bench "sampleGrid-2-8" (whnfIO (sampleGrid 2 8 ball))]]
+main = do
+  let voxelsSmall = volumeVoxels 2 2 ball unitVoxel
+      voxelsMedium = volumeVoxels 6 2 ball unitVoxel
+      voxelsLarge = volumeVoxels 2 8 ball unitVoxel
+  defaultMain [
+    bgroup "Grid" [
+      bench "fromVoxels-small" (whnfIO (fromVoxels 4 voxelsSmall)),
+      bench "fromVoxels-medium" (whnfIO (fromVoxels 64 voxelsMedium)),
+      bench "fromVoxels-large" (whnfIO (fromVoxels 64 voxelsLarge))]]
 
 ball :: Cube -> Side
 ball (Cube size position)

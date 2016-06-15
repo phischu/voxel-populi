@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveFunctor, RecordWildCards, ScopedTypeVariables #-}
 module Chunk where
 
-import Voxel (addressCube, Address, Cube(Cube))
+import Voxel (voxelCube, Voxel, Cube(Cube))
 import Camera (Camera, cameraMatrix)
 
 import Graphics.GL
@@ -40,10 +40,10 @@ data Chunk = Chunk {
   _vertexArrayObject :: VertexArrayObject }
 
 
-createChunk :: Stream (Of Address) IO () -> IO Chunk
-createChunk addresses = do
+createChunk :: Stream (Of Voxel) IO () -> IO Chunk
+createChunk voxels = do
 
-  let cubes = S.map addressCube addresses
+  let cubes = S.map voxelCube voxels
 
   S.length_ cubes >>= print
 

@@ -4,7 +4,9 @@ module Main where
 import Camera (
   Camera, lookAt, fly, pan)
 import Voxel (
-  Cube(Cube), Side(..), sampleGrid, visibleAddresses)
+  Cube(Cube), Side(..), volumeVoxels, unitVoxel)
+import Grid (
+  fromVoxels, visibleVoxels)
 import Chunk (
   Chunk, createChunk, renderChunk, deleteChunk)
 
@@ -63,8 +65,9 @@ main = do
   glEnable GL_DEPTH_TEST
   glClearColor 1 1 1 1
 
-  grid <- sampleGrid depth resolution ball
-  chunk <- createChunk (visibleAddresses grid)
+  let voxels = volumeVoxels depth resolution ball unitVoxel
+  grid <- fromVoxels (resolution ^ depth) voxels
+  chunk <- createChunk (visibleVoxels grid)
 
   loop window time cursorPos initialCamera chunk
 
