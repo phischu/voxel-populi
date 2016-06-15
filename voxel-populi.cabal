@@ -38,6 +38,11 @@ executable voxel-populi
 benchmark benchmark
   type:                exitcode-stdio-1.0
   main-is:             Benchmark.hs
+  other-modules:       Camera,
+                       Voxel,
+                       Mesh,
+                       Grid,
+                       Octree
   build-depends:       base >=4.8.2 && <4.9,
                        criterion >=1.1.1.0 && <1.2,
                        linear >=1.20.4 && <1.21,

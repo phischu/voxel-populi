@@ -3,23 +3,23 @@ module Octree where
 
 import Voxel (
   Voxel(Voxel), Location, unitVoxel, relativeVoxel,
-  Face(Face))
+  Face, voxelFaces)
 
 import Linear (
-  V2(V2), V3(V3), (^+^), (*^),
-  _x, _y, _z, unit)
+  V2(V2), V3(V3), (^+^),
+  _x, _y)
 
 import Streaming (
   Stream, Of)
 import qualified Streaming.Prelude as S (
   each)
 
-
 import Control.Lens (
   over)
 
 import Control.Applicative (
   liftA2)
+
 
 data Octree a =
   Full a |
@@ -109,19 +109,4 @@ naiveOctreeMesh octree =
 visibleVoxels :: Octree Bool -> [Voxel]
 visibleVoxels octree =
   map fst (filter snd (getVoxels octree unitVoxel))
-
-voxelFaces :: Voxel -> [Face]
-voxelFaces (Voxel resolution location) = [
-  Face position1 side1 side2,
-  Face position1 side2 side3,
-  Face position1 side3 side1,
-  Face position2 (negate side1) (negate side2),
-  Face position2 (negate side2) (negate side3),
-  Face position2 (negate side3) (negate side1)] where
-    size = recip (realToFrac resolution)
-    position1 = size *^ (fmap realToFrac location)
-    position2 = position1 ^+^ V3 size size size
-    side1 = size *^ (unit _x)
-    side2 = size *^ (unit _y)
-    side3 = size *^ (unit _z)
 

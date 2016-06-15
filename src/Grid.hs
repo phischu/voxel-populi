@@ -3,7 +3,7 @@ module Grid where
 
 import Voxel (
   Voxel(Voxel), Resolution, Location, unitVoxel,
-  Face)
+  Face, voxelFaces)
 
 import Linear (
   V3(V3), (^+^))
@@ -12,7 +12,7 @@ import Streaming.Prelude (
   Stream, Of)
 
 import qualified Streaming.Prelude as S (
-  map, filter, mapM, each, foldM_)
+  map, filter, for, mapM, each, foldM_)
 
 import Data.Array.IO (
   IOArray, newArray, writeArray, readArray)
@@ -71,5 +71,6 @@ visibleVoxels grid =
       getVoxels grid unitVoxel))
 
 voxelMesh :: Grid Bool -> Stream (Of Face) IO ()
-voxelMesh = undefined
+voxelMesh grid = S.for (visibleVoxels grid) (\face ->
+  S.each (voxelFaces face))
 
