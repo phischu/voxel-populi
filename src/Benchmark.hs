@@ -6,7 +6,7 @@ import Grid (
   fromVoxels, setVoxel, getVoxels)
 
 import qualified Streaming.Prelude as S (
-  effects)
+  effects, each)
 
 import Criterion (
   bgroup, bench, env, whnfIO)
@@ -26,12 +26,12 @@ main = do
   defaultMain [
     bgroup "Grid" [
       bgroup "fromVoxels" [
-        bench "fromVoxels-small" (whnfIO (fromVoxels 4 voxelsSmall)),
-        bench "fromVoxels-medium" (whnfIO (fromVoxels 64 voxelsMedium)),
-        bench "fromVoxels-large" (whnfIO (fromVoxels 64 voxelsLarge))],
-      env (fromVoxels 64 voxelsMedium) (\grid ->
+        bench "fromVoxels-small" (whnfIO (fromVoxels 4 (S.each voxelsSmall))),
+        bench "fromVoxels-medium" (whnfIO (fromVoxels 64 (S.each voxelsMedium))),
+        bench "fromVoxels-large" (whnfIO (fromVoxels 64 (S.each voxelsLarge)))],
+      env (fromVoxels 64 (S.each voxelsMedium)) (\grid ->
           bench "setVoxel" (whnfIO (setVoxel grid voxelToSet True))),
-      env (fromVoxels 64 voxelsMedium) (\grid ->
+      env (fromVoxels 64 (S.each voxelsMedium)) (\grid ->
           bench "getVoxels" (whnfIO (S.effects (getVoxels grid voxelToGet))))]]
 
 ball :: Cube -> Side

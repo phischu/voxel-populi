@@ -4,19 +4,15 @@ module Voxel where
 import Linear (
   V3(V3), (*^), (^+^))
 
-import Streaming.Prelude (
-  Stream, Of)
-
-import qualified Streaming.Prelude as S (
-  map, for, yield, each)
-
 import Control.Applicative (liftA3)
 
 
 type Depth = Int
 type Resolution = Int
 type Location = V3 Int
+
 data Voxel = Voxel Resolution Location
+  deriving (Show, Eq, Ord)
 
 data Cube = Cube Float (V3 Float)
   deriving (Show, Eq, Ord)
@@ -25,19 +21,19 @@ data Side = Outside | Border | Inside
   deriving (Show, Eq, Ord)
 
 volumeVoxels ::
-  (Monad m) =>
   Depth ->
   Resolution ->
   (Cube -> Side) ->
   Voxel ->
-  Stream (Of Voxel) m ()
+  [Voxel]
 volumeVoxels depth resolution volume voxel
-  | depth < 0 = return ()
+  | depth < 0 = []
   | otherwise = case volume (voxelCube voxel) of
-    Outside -> return ()
-    Inside -> S.yield voxel
-    Border -> S.for (childVoxels resolution voxel) (\childVoxel ->
-      volumeVoxels (depth - 1) resolution volume childVoxel)
+    Outside -> []
+    Inside -> [voxel]
+    Border -> do
+      childVoxel <- childVoxels resolution voxel
+      volumeVoxels (depth - 1) resolution volume childVoxel
 
 unitVoxel :: Voxel
 unitVoxel = Voxel 1 (V3 0 0 0)
@@ -50,9 +46,9 @@ relativeVoxel parentVoxel childVoxel =
     Voxel parentResolution parentLocation = parentVoxel
     Voxel childResolution childLocation = childVoxel
 
-childVoxels :: (Monad m) => Resolution -> Voxel -> Stream (Of Voxel) m ()
+childVoxels :: Resolution -> Voxel -> [Voxel]
 childVoxels resolution voxel =
-  S.map (relativeVoxel voxel) (S.each (subdivideVoxels resolution))
+  map (relativeVoxel voxel) (subdivideVoxels resolution)
 
 subdivideVoxels :: Resolution -> [Voxel]
 subdivideVoxels resolution = do

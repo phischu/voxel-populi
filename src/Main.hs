@@ -5,7 +5,7 @@ import Camera (
   Camera, lookAt, fly, pan)
 import Voxel (
   Cube(Cube), Side(..), volumeVoxels, unitVoxel)
-import Grid (
+import Octree (
   fromVoxels, visibleVoxels)
 import Chunk (
   Chunk, createChunk, renderChunk, deleteChunk)
@@ -24,13 +24,16 @@ import Linear (
   V2(V2), V3(V3), (*^), (^+^), (^-^),
   norm)
 
+import qualified Streaming.Prelude as S (
+  each)
+
 import Data.Bits ((.|.))
 
 import Text.Printf (printf)
 import Control.Monad (unless)
 
 depth :: Int
-depth = 6
+depth = 5
 
 resolution :: Int
 resolution = 2
@@ -66,8 +69,8 @@ main = do
   glClearColor 1 1 1 1
 
   let voxels = volumeVoxels depth resolution ball unitVoxel
-  grid <- fromVoxels (resolution ^ depth) voxels
-  chunk <- createChunk (visibleVoxels grid)
+      octree = fromVoxels voxels
+  chunk <- createChunk (S.each (visibleVoxels octree))
 
   loop window time cursorPos initialCamera chunk
 
