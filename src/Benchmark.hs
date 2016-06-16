@@ -34,19 +34,19 @@ main = defaultMain [
       bench "Octree" (nf (Octree.fromVolume 6 ball) unitVoxel)]],
   bgroup "setVoxel" [
     env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
-      bench "Grid.setVoxel" (whnfIO (Grid.setVoxel grid voxelToSet True))),
+      bench "Grid" (whnfIO (Grid.setVoxel grid voxelToSet True))),
     env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
-      bench "Octree.setVoxel" (nf (Octree.setVoxel octree voxelToSet) True))],
+      bench "Octree" (nf (Octree.setVoxel octree voxelToSet) True))],
   bgroup "getVoxels" [
     env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
-      bench "Grid.getVoxels" (whnfIO (S.effects (Grid.getVoxels grid voxelToGet)))),
+      bench "Grid" (whnfIO (S.effects (Grid.getVoxels grid voxelToGet)))),
     env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
-      bench "Octree.getVoxels" (nf (Octree.getVoxels octree) voxelToGet))],
+      bench "Octree" (nf (Octree.getVoxels octree) voxelToGet))],
   bgroup "toMesh" [
     env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
-      bench "Grid.toMesh" (whnfIO (S.effects (Grid.toMesh grid)))),
+      bench "Grid" (whnfIO (S.effects (Grid.toMesh grid)))),
     env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
-      bench "Octree.toMesh" (whnfIO (S.effects (Octree.toMesh octree))))]]
+      bench "Octree" (whnfIO (S.effects (Octree.toMesh octree))))]]
 
 
 ball :: Cube -> Side

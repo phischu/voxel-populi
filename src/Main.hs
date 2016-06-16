@@ -4,9 +4,10 @@ module Main where
 import Camera (
   Camera, lookAt, fly, pan)
 import Voxel (
-  Cube(Cube), Side(..), unitVoxel)
+  Voxel(Voxel), Cube(Cube), Side(..), unitVoxel)
 import Octree (
-  fromVolume, toMeshNaive)
+  Octree, fromVolume, toMesh,
+  emptyOctree, setVoxel)
 import Mesh (
   GPUMesh, createGPUMesh, renderGPUMesh, deleteGPUMesh)
 
@@ -27,16 +28,28 @@ import Linear (
 import Data.Bits ((.|.))
 
 import Text.Printf (printf)
-import Control.Monad (unless)
+import Control.Monad (when, unless)
 
 depth :: Int
-depth = 4
+depth = 6
 
 resolution :: Int
 resolution = 2
 
+octree :: Octree Bool
+octree = ballOctree
+
+miniOctree :: Octree Bool
+miniOctree = setVoxel emptyOctree (Voxel 4 (V3 1 1 1)) True
+
+ballOctree :: Octree Bool
+ballOctree = fromVolume depth ball unitVoxel
+
 initialCamera :: Camera
 initialCamera = lookAt (V3 2 2 2) (V3 0 0 0) (V3 0 1 0)
+
+wireframe :: Bool
+wireframe = False
 
 ball :: Cube -> Side
 ball (Cube size position)
@@ -64,9 +77,9 @@ main = do
 
   glEnable GL_DEPTH_TEST
   glClearColor 1 1 1 1
+  when wireframe (glPolygonMode GL_FRONT_AND_BACK GL_LINE)
 
-  let octree = fromVolume depth ball unitVoxel
-  gpuMesh <- createGPUMesh (toMeshNaive octree)
+  gpuMesh <- createGPUMesh (toMesh octree)
 
   loop window time cursorPos initialCamera gpuMesh
 
@@ -105,7 +118,7 @@ loop window lastTime (lastCursorX, lastCursorY) camera gpuMesh = do
         _ -> 0
 
   let cameraMovementSpeed = 1
-      cameraRotationSpeed = 0.001
+      cameraRotationSpeed = 0.005
       keystateScalar keystate = case keystate of
         GLFW.KeyState'Pressed -> 1
         _ -> 0
