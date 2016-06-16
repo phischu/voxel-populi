@@ -28,22 +28,26 @@ import Linear (
 import Data.Bits ((.|.))
 
 import Text.Printf (printf)
+import Control.Applicative (liftA3)
 import Control.Monad (when, unless)
 
 depth :: Int
-depth = 6
+depth = 8
 
 resolution :: Int
 resolution = 2
 
 octree :: Octree Bool
-octree = ballOctree
+octree = fmap not caveOctree
 
 miniOctree :: Octree Bool
 miniOctree = setVoxel emptyOctree (Voxel 4 (V3 1 1 1)) True
 
 ballOctree :: Octree Bool
 ballOctree = fromVolume depth ball unitVoxel
+
+caveOctree :: Octree Bool
+caveOctree = fromVolume depth cave unitVoxel
 
 initialCamera :: Camera
 initialCamera = lookAt (V3 2 2 2) (V3 0 0 0) (V3 0 1 0)
@@ -62,6 +66,17 @@ ball (Cube size position)
     cubeRadius = norm halfSize
     halfSize = 0.5 *^ (V3 size size size)
     distance = norm (circleCenter ^-^ cubeCenter)
+
+cave :: Cube -> Side
+cave (Cube size position)
+  | size < 0.1 && all (<0) corners = Inside
+  | size > 0.1 && all (>0) corners = Outside
+  | otherwise = Border where
+    corners = do
+      d <- liftA3 V3 [0, size] [0, size] [0, size]
+      return (value (position ^+^ d))
+    value x = sum (fmap (\xi -> sin (omega * xi / (2 * pi))) x)
+    omega = 70
 
 main :: IO ()
 main = do
