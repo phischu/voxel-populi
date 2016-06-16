@@ -3,16 +3,16 @@ module Octree where
 
 import Voxel (
   Voxel(Voxel), Location, unitVoxel, relativeVoxel,
-  Face, voxelFaces)
+  Face, voxelFace, voxelFaces)
 
 import Linear (
   V2(V2), V3(V3), (^+^),
-  _x, _y)
+  _x, _y, ex)
 
 import Streaming (
   Stream, Of)
 import qualified Streaming.Prelude as S (
-  each)
+  each, map, concat, mapMaybe)
 
 import Control.Lens (
   over)
@@ -61,14 +61,14 @@ emptyOctree :: Octree Bool
 emptyOctree = Full False
 
 zipOctree :: Octree a -> Octree b -> Octree (a, b)
-zipOctree (Full valueA) (Full valueB) =
-  Full (valueA, valueB)
-zipOctree (Full valueA) (Children childrenB) =
-  Children (zipOctWith zipOctree (homogeneousOct (Full valueA)) childrenB)
-zipOctree (Children childrenA) (Full valueB) =
-  Children (zipOctWith zipOctree childrenA (homogeneousOct (Full valueB)))
-zipOctree (Children childrenA) (Children childrenB) =
-  Children (zipOctWith zipOctree childrenA childrenB)
+zipOctree (Full value1) (Full value2) =
+  Full (value1, value2)
+zipOctree (Full value1) (Children children2) =
+  Children (zipOctWith zipOctree (homogeneousOct (Full value1)) children2)
+zipOctree (Children children1) (Full value2) =
+  Children (zipOctWith zipOctree children1 (homogeneousOct (Full value2)))
+zipOctree (Children children1) (Children children2) =
+  Children (zipOctWith zipOctree children1 children2)
 
 setVoxel :: Octree Bool -> Voxel -> Bool -> Octree Bool
 setVoxel _ (Voxel 1 (V3 0 0 0)) value =
@@ -100,11 +100,33 @@ octVoxels = Oct (do
       return (Voxel 2 (x ^+^ y ^+^ z)))))
 
 octreeMesh :: (Monad m) => Octree Bool -> Stream (Of Face) m ()
-octreeMesh = naiveOctreeMesh
+octreeMesh octree =
+  S.mapMaybe rightOctreeFace (
+    S.each (
+        getVoxels (octreeNeighbour octree (Full False)) unitVoxel))
+
+octreeNeighbour :: Octree a -> Octree a -> Octree (a, a)
+octreeNeighbour (Full value1) (Full value2) =
+  Full (value1, value2)
+octreeNeighbour (Full value1) (Children children2) =
+  octreeNeighbour (Children (homogeneousOct (Full value1))) (Children children2)
+octreeNeighbour (Children children1) (Full value2) =
+  octreeNeighbour (Children children1) (Children (homogeneousOct (Full value2)))
+octreeNeighbour (Children children1) (Children children2) =
+  Children (zipOctWith octreeNeighbour children1 neighbours) where
+    neighbours = Oct (V2 rightChildrenA leftChildrenB)
+    (Oct (V2 _ rightChildrenA)) = children1
+    (Oct (V2 leftChildrenB _)) = children2
+
+rightOctreeFace :: (Voxel, (Bool, Bool)) -> Maybe Face
+rightOctreeFace (voxel, (True, False)) =
+  Just (voxelFace ex ex voxel)
+rightOctreeFace _ =
+  Nothing
 
 naiveOctreeMesh :: (Monad m) => Octree Bool -> Stream (Of Face) m ()
 naiveOctreeMesh octree =
-  S.each (concatMap voxelFaces (visibleVoxels octree))
+  S.concat (S.concat (S.map voxelFaces (S.each (visibleVoxels octree))))
 
 visibleVoxels :: Octree Bool -> [Voxel]
 visibleVoxels octree =

@@ -12,7 +12,7 @@ import Streaming.Prelude (
   Stream, Of)
 
 import qualified Streaming.Prelude as S (
-  map, filter, for, mapM, each, foldM_)
+  map, concat, filter, for, mapM, each, foldM_)
 
 import Data.Array.IO (
   IOArray, newArray, writeArray, readArray)
@@ -72,5 +72,5 @@ visibleVoxels grid =
 
 voxelMesh :: Grid Bool -> Stream (Of Face) IO ()
 voxelMesh grid = S.for (visibleVoxels grid) (\face ->
-  S.each (voxelFaces face))
+  S.concat (S.each (voxelFaces face)))
 

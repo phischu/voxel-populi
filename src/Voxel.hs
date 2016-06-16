@@ -2,8 +2,11 @@
 module Voxel where
 
 import Linear (
-  V3(V3), (*^), (^+^),
-  unit, _x, _y, _z)
+  V2(V2), V3(V3), (*^), (^+^),
+  unit, E(el), _x, _y, _z)
+
+import Control.Lens (
+  view)
 
 import Control.Applicative (liftA3)
 
@@ -65,18 +68,25 @@ voxelCube (Voxel resolution location) = Cube size position where
   size = recip (realToFrac resolution)
   position = size *^ fmap realToFrac location
 
-voxelFaces :: Voxel -> [Face]
-voxelFaces (Voxel resolution location) = [
-  Face position1 side1 side2,
-  Face position1 side2 side3,
-  Face position1 side3 side1,
-  Face position2 (negate side1) (negate side2),
-  Face position2 (negate side2) (negate side3),
-  Face position2 (negate side3) (negate side1)] where
-    size = recip (realToFrac resolution)
-    position1 = size *^ (fmap realToFrac location)
-    position2 = position1 ^+^ V3 size size size
-    side1 = size *^ (unit _x)
-    side2 = size *^ (unit _y)
-    side3 = size *^ (unit _z)
+voxelFaces :: Voxel -> V2 (V3 Face)
+voxelFaces (Voxel resolution location) =
+  V2
+    (V3
+      (Face position2 (negate side2) (negate side3))
+      (Face position2 (negate side3) (negate side1))
+      (Face position2 (negate side1) (negate side2)))
+    (V3
+      (Face position1 side2 side3)
+      (Face position1 side3 side1)
+      (Face position1 side1 side2)) where
+        size = recip (realToFrac resolution)
+        position1 = size *^ (fmap realToFrac location)
+        position2 = position1 ^+^ V3 size size size
+        side1 = size *^ (unit _x)
+        side2 = size *^ (unit _y)
+        side3 = size *^ (unit _z)
+
+voxelFace :: E V2 -> E V3 -> Voxel -> Face
+voxelFace orientation direction voxel =
+  view (el orientation . el direction) (voxelFaces voxel)
 
