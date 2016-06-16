@@ -1,15 +1,17 @@
 module Main where
 
 import Voxel (
-  Voxel(Voxel), Cube(Cube), Side(..), volumeVoxels, unitVoxel)
-import Grid (
-  fromVoxels, setVoxel, getVoxels)
+  Voxel(Voxel), Cube(Cube), Side(..), unitVoxel)
+import qualified Grid (
+  fromVolume, setVoxel, getVoxels)
+import qualified Octree (
+  fromVolume, setVoxel, getVoxels)
 
 import qualified Streaming.Prelude as S (
-  effects, each)
+  effects)
 
 import Criterion (
-  bgroup, bench, env, whnfIO)
+  bgroup, bench, env, whnfIO, nf)
 import Criterion.Main (
   defaultMain)
 
@@ -19,20 +21,32 @@ import Linear (
 
 
 main :: IO ()
-main = do
-  let voxelsSmall = volumeVoxels 2 2 ball unitVoxel
-      voxelsMedium = volumeVoxels 6 2 ball unitVoxel
-      voxelsLarge = volumeVoxels 2 8 ball unitVoxel
-  defaultMain [
+main = defaultMain [
+  bgroup "fromVolume" [
+    bgroup "small" [
+      bench "Grid" (whnfIO (Grid.fromVolume 4 ball unitVoxel)),
+      bench "Octree" (nf (Octree.fromVolume 2 ball) unitVoxel)],
+    bgroup "medium" [
+      bench "Grid" (whnfIO (Grid.fromVolume 16 ball unitVoxel)),
+      bench "Octree" (nf (Octree.fromVolume 4 ball) unitVoxel)],
+    bgroup "large" [
+      bench "Grid" (whnfIO (Grid.fromVolume 64 ball unitVoxel)),
+      bench "Octree" (nf (Octree.fromVolume 6 ball) unitVoxel)]],
+  bgroup "setVoxel" [
     bgroup "Grid" [
-      bgroup "fromVoxels" [
-        bench "fromVoxels-small" (whnfIO (fromVoxels 4 (S.each voxelsSmall))),
-        bench "fromVoxels-medium" (whnfIO (fromVoxels 64 (S.each voxelsMedium))),
-        bench "fromVoxels-large" (whnfIO (fromVoxels 64 (S.each voxelsLarge)))],
-      env (fromVoxels 64 (S.each voxelsMedium)) (\grid ->
-          bench "setVoxel" (whnfIO (setVoxel grid voxelToSet True))),
-      env (fromVoxels 64 (S.each voxelsMedium)) (\grid ->
-          bench "getVoxels" (whnfIO (S.effects (getVoxels grid voxelToGet))))]]
+      env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
+        bench "setVoxel" (whnfIO (Grid.setVoxel grid voxelToSet True)))],
+    bgroup "Octree" [
+      env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
+        bench "setVoxel" (nf (Octree.setVoxel octree voxelToSet) True))]],
+  bgroup "getVoxel" [
+    bgroup "Grid" [
+      env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
+        bench "getVoxels" (whnfIO (S.effects (Grid.getVoxels grid voxelToGet))))],
+    bgroup "Octree" [
+      env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
+        bench "getVoxels" (nf (Octree.getVoxels octree) voxelToGet))]]]
+
 
 ball :: Cube -> Side
 ball (Cube size position)
@@ -46,8 +60,10 @@ ball (Cube size position)
     halfSize = 0.5 *^ (V3 size size size)
     distance = norm (circleCenter ^-^ cubeCenter)
 
+
 voxelToSet :: Voxel
 voxelToSet = Voxel 16 (V3 1 1 1)
+
 
 voxelToGet :: Voxel
 voxelToGet = Voxel 4 (V3 1 1 1)

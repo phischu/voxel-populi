@@ -3,6 +3,7 @@ module Grid where
 
 import Voxel (
   Voxel(Voxel), Resolution, Location, unitVoxel,
+  Cube, Side(..), voxelCube,
   Face, voxelFaces)
 
 import Linear (
@@ -12,7 +13,7 @@ import Streaming.Prelude (
   Stream, Of)
 
 import qualified Streaming.Prelude as S (
-  map, concat, filter, for, mapM, each, foldM_)
+  map, concat, filter, for, mapM, each)
 
 import Data.Array.IO (
   IOArray, newArray, writeArray, readArray)
@@ -28,12 +29,14 @@ data Grid a = Grid !Resolution !(IOArray Location a)
 instance (NFData a) => NFData (Grid a) where
   rnf (Grid _ _) = ()
 
-fromVoxels :: Resolution -> Stream (Of Voxel) IO r -> IO (Grid Bool)
-fromVoxels resolution =
-  S.foldM_
-    (\grid address -> setVoxel grid address True)
-    (emptyGrid resolution)
-    return
+fromVolume :: Resolution -> (Cube -> Side) -> Voxel -> IO (Grid Bool)
+fromVolume resolution volume voxel = do
+  grid@(Grid _ values) <- emptyGrid resolution
+  for_ (voxelLocations resolution voxel) (\location ->
+    case volume (voxelCube (Voxel resolution location)) of
+      Inside -> writeArray values location True
+      _ -> return ())
+  return grid
 
 emptyGrid :: Resolution -> IO (Grid Bool)
 emptyGrid resolution = do

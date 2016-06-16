@@ -8,7 +8,14 @@ import Linear (
 import Control.Lens (
   view)
 
-import Control.Applicative (liftA3)
+import Control.Applicative (
+  liftA3)
+
+import Control.DeepSeq (
+  NFData)
+
+import GHC.Generics (
+  Generic)
 
 
 type Depth = Int
@@ -16,7 +23,9 @@ type Resolution = Int
 type Location = V3 Int
 
 data Voxel = Voxel Resolution Location
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
+
+instance NFData Voxel
 
 data Cube = Cube Float (V3 Float)
   deriving (Show, Eq, Ord)
@@ -27,20 +36,6 @@ data Face = Face (V3 Float) (V3 Float) (V3 Float)
 data Side = Outside | Border | Inside
   deriving (Show, Eq, Ord)
 
-volumeVoxels ::
-  Depth ->
-  Resolution ->
-  (Cube -> Side) ->
-  Voxel ->
-  [Voxel]
-volumeVoxels depth resolution volume voxel
-  | depth < 0 = []
-  | otherwise = case volume (voxelCube voxel) of
-    Outside -> []
-    Inside -> [voxel]
-    Border -> do
-      childVoxel <- childVoxels resolution voxel
-      volumeVoxels (depth - 1) resolution volume childVoxel
 
 unitVoxel :: Voxel
 unitVoxel = Voxel 1 (V3 0 0 0)

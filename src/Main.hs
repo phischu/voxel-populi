@@ -4,9 +4,9 @@ module Main where
 import Camera (
   Camera, lookAt, fly, pan)
 import Voxel (
-  Cube(Cube), Side(..), volumeVoxels, unitVoxel)
+  Cube(Cube), Side(..), unitVoxel)
 import Octree (
-  fromVoxels, octreeMesh)
+  fromVolume, octreeMesh)
 import Mesh (
   GPUMesh, createGPUMesh, renderGPUMesh, deleteGPUMesh)
 
@@ -65,8 +65,7 @@ main = do
   glEnable GL_DEPTH_TEST
   glClearColor 1 1 1 1
 
-  let voxels = volumeVoxels depth resolution ball unitVoxel
-      octree = fromVoxels voxels
+  let octree = fromVolume depth ball unitVoxel
   gpuMesh <- createGPUMesh (octreeMesh octree)
 
   loop window time cursorPos initialCamera gpuMesh

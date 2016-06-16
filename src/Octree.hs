@@ -1,8 +1,9 @@
-{-# LANGUAGE DeriveFoldable #-}
+{-# language DeriveFunctor, DeriveFoldable, DeriveGeneric #-}
 module Octree where
 
 import Voxel (
   Voxel(Voxel), Location, unitVoxel, relativeVoxel,
+  Depth, Cube, Side(..), voxelCube,
   Face, voxelFace, voxelFaces)
 
 import Linear (
@@ -14,20 +15,30 @@ import Streaming (
 import qualified Streaming.Prelude as S (
   each, map, concat, mapMaybe)
 
+import Control.DeepSeq (
+  NFData)
+
 import Control.Lens (
   over)
 
 import Control.Applicative (
   liftA2)
 
+import GHC.Generics (
+  Generic)
+
 
 data Octree a =
   Full a |
   Children (Oct (Octree a))
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord, Show, Generic)
+
+instance (NFData a) => NFData (Octree a)
 
 newtype Oct a = Oct (V2 (V2 (V2 a)))
-  deriving (Eq, Ord, Show, Foldable)
+  deriving (Eq, Ord, Show, Functor, Foldable, Generic)
+
+instance (NFData a) => NFData (Oct a)
 
 homogeneousOct :: a -> Oct a
 homogeneousOct a = Oct (pure (pure (pure a)))
@@ -53,9 +64,14 @@ splitVoxel (Voxel resolution location) =
     parentLocation = fmap (`mod` parentResolution) location
     childLocation = fmap (`div` parentResolution) location
 
-fromVoxels :: [Voxel] -> Octree Bool
-fromVoxels [] = emptyOctree
-fromVoxels (voxel : voxels) = setVoxel (fromVoxels voxels) voxel True
+fromVolume :: Depth -> (Cube -> Side) -> Voxel -> Octree Bool
+fromVolume depth volume voxel
+  | depth <= 0 = Full False
+  | otherwise = case volume (voxelCube voxel) of
+    Outside -> Full False
+    Inside -> Full True
+    Border -> Children (
+      fmap (fromVolume (depth - 1) volume . relativeVoxel voxel) octVoxels)
 
 emptyOctree :: Octree Bool
 emptyOctree = Full False
