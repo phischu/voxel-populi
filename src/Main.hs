@@ -30,7 +30,7 @@ import Text.Printf (printf)
 import Control.Monad (unless)
 
 depth :: Int
-depth = 6
+depth = 5
 
 resolution :: Int
 resolution = 2
