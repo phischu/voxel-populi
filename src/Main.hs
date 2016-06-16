@@ -6,7 +6,7 @@ import Camera (
 import Voxel (
   Cube(Cube), Side(..), unitVoxel)
 import Octree (
-  fromVolume, octreeMesh)
+  fromVolume, toMeshNaive)
 import Mesh (
   GPUMesh, createGPUMesh, renderGPUMesh, deleteGPUMesh)
 
@@ -30,7 +30,7 @@ import Text.Printf (printf)
 import Control.Monad (unless)
 
 depth :: Int
-depth = 5
+depth = 4
 
 resolution :: Int
 resolution = 2
@@ -66,7 +66,7 @@ main = do
   glClearColor 1 1 1 1
 
   let octree = fromVolume depth ball unitVoxel
-  gpuMesh <- createGPUMesh (octreeMesh octree)
+  gpuMesh <- createGPUMesh (toMeshNaive octree)
 
   loop window time cursorPos initialCamera gpuMesh
 

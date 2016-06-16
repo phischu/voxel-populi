@@ -66,7 +66,7 @@ splitVoxel (Voxel resolution location) =
 
 fromVolume :: Depth -> (Cube -> Side) -> Voxel -> Octree Bool
 fromVolume depth volume voxel
-  | depth <= 0 = Full False
+  | depth < 0 = Full False
   | otherwise = case volume (voxelCube voxel) of
     Outside -> Full False
     Inside -> Full True
@@ -115,8 +115,8 @@ octVoxels = Oct (do
       z <- V2 (V3 0 0 0) (V3 0 0 1)
       return (Voxel 2 (x ^+^ y ^+^ z)))))
 
-octreeMesh :: (Monad m) => Octree Bool -> Stream (Of Face) m ()
-octreeMesh octree =
+toMesh :: (Monad m) => Octree Bool -> Stream (Of Face) m ()
+toMesh octree =
   S.mapMaybe rightOctreeFace (
     S.each (
         getVoxels (octreeNeighbour octree (Full False)) unitVoxel))
@@ -140,8 +140,8 @@ rightOctreeFace (voxel, (True, False)) =
 rightOctreeFace _ =
   Nothing
 
-naiveOctreeMesh :: (Monad m) => Octree Bool -> Stream (Of Face) m ()
-naiveOctreeMesh octree =
+toMeshNaive :: (Monad m) => Octree Bool -> Stream (Of Face) m ()
+toMeshNaive octree =
   S.concat (S.concat (S.map voxelFaces (S.each (visibleVoxels octree))))
 
 visibleVoxels :: Octree Bool -> [Voxel]

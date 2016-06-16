@@ -3,9 +3,9 @@ module Main where
 import Voxel (
   Voxel(Voxel), Cube(Cube), Side(..), unitVoxel)
 import qualified Grid (
-  fromVolume, setVoxel, getVoxels)
+  fromVolume, setVoxel, getVoxels, toMesh)
 import qualified Octree (
-  fromVolume, setVoxel, getVoxels)
+  fromVolume, setVoxel, getVoxels, toMesh)
 
 import qualified Streaming.Prelude as S (
   effects)
@@ -33,19 +33,20 @@ main = defaultMain [
       bench "Grid" (whnfIO (Grid.fromVolume 64 ball unitVoxel)),
       bench "Octree" (nf (Octree.fromVolume 6 ball) unitVoxel)]],
   bgroup "setVoxel" [
-    bgroup "Grid" [
-      env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
-        bench "setVoxel" (whnfIO (Grid.setVoxel grid voxelToSet True)))],
-    bgroup "Octree" [
-      env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
-        bench "setVoxel" (nf (Octree.setVoxel octree voxelToSet) True))]],
-  bgroup "getVoxel" [
-    bgroup "Grid" [
-      env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
-        bench "getVoxels" (whnfIO (S.effects (Grid.getVoxels grid voxelToGet))))],
-    bgroup "Octree" [
-      env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
-        bench "getVoxels" (nf (Octree.getVoxels octree) voxelToGet))]]]
+    env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
+      bench "Grid.setVoxel" (whnfIO (Grid.setVoxel grid voxelToSet True))),
+    env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
+      bench "Octree.setVoxel" (nf (Octree.setVoxel octree voxelToSet) True))],
+  bgroup "getVoxels" [
+    env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
+      bench "Grid.getVoxels" (whnfIO (S.effects (Grid.getVoxels grid voxelToGet)))),
+    env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
+      bench "Octree.getVoxels" (nf (Octree.getVoxels octree) voxelToGet))],
+  bgroup "toMesh" [
+    env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
+      bench "Grid.toMesh" (whnfIO (S.effects (Grid.toMesh grid)))),
+    env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
+      bench "Octree.toMesh" (whnfIO (S.effects (Octree.toMesh octree))))]]
 
 
 ball :: Cube -> Side

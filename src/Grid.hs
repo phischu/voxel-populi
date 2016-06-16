@@ -73,7 +73,7 @@ visibleVoxels grid =
     S.filter snd (
       getVoxels grid unitVoxel))
 
-voxelMesh :: Grid Bool -> Stream (Of Face) IO ()
-voxelMesh grid = S.for (visibleVoxels grid) (\face ->
+toMesh :: Grid Bool -> Stream (Of Face) IO ()
+toMesh grid = S.for (visibleVoxels grid) (\face ->
   S.concat (S.each (voxelFaces face)))
 
