@@ -3,12 +3,14 @@ module Main where
 import Voxel (
   Voxel(Voxel), Cube(Cube), Side(..), unitVoxel)
 import qualified Grid (
-  fromVolume, setVoxel, getVoxels, toMesh)
+  fromVolume, setVoxel, enumerate, toMesh)
 import qualified Octree (
-  fromVolume, setVoxel, getVoxels, toMesh)
+  fromVolume, setVoxel, enumerate, toMesh)
 
+import Streaming (
+  Stream, Of)
 import qualified Streaming.Prelude as S (
-  effects)
+  mapM_, each)
 
 import Criterion (
   bgroup, bench, env, whnfIO, nf)
@@ -18,6 +20,11 @@ import Criterion.Main (
 import Linear (
   V3(V3), (*^), (^+^), (^-^),
   norm)
+
+import Control.DeepSeq (
+  NFData, force)
+import Control.Exception (
+  evaluate)
 
 
 main :: IO ()
@@ -37,17 +44,20 @@ main = defaultMain [
       bench "Grid" (whnfIO (Grid.setVoxel grid voxelToSet True))),
     env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
       bench "Octree" (nf (Octree.setVoxel octree voxelToSet) True))],
-  bgroup "getVoxels" [
+  bgroup "enumerate" [
     env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
-      bench "Grid" (whnfIO (S.effects (Grid.getVoxels grid voxelToGet)))),
+      bench "Grid" (whnfIO (forceStream (Grid.enumerate grid)))),
     env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
-      bench "Octree" (nf (Octree.getVoxels octree) voxelToGet))],
+      bench "Octree" (whnfIO (forceStream (S.each (Octree.enumerate octree)))))],
   bgroup "toMesh" [
     env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
-      bench "Grid" (whnfIO (S.effects (Grid.toMesh grid)))),
+      bench "Grid" (whnfIO (forceStream (Grid.toMesh grid)))),
     env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
-      bench "Octree" (whnfIO (S.effects (Octree.toMesh octree))))]]
+      bench "Octree" (whnfIO (forceStream (Octree.toMesh octree))))]]
 
+
+forceStream :: (NFData a) => Stream (Of a) IO r -> IO r
+forceStream = S.mapM_ (evaluate . force)
 
 ball :: Cube -> Side
 ball (Cube size position)

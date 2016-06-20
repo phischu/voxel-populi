@@ -50,12 +50,12 @@ setVoxel (Grid resolution values) address value = do
     writeArray values location value)
   return (Grid resolution values)
 
-getVoxels :: Grid Bool -> Voxel -> Stream (Of (Voxel,Bool)) IO ()
-getVoxels (Grid resolution values) address =
+enumerate :: Grid Bool -> Stream (Of (Voxel,Bool)) IO ()
+enumerate (Grid resolution values) =
   S.mapM (\i -> do
     value <- readArray values i
     return (Voxel resolution i, value)) (
-      S.each (voxelLocations resolution address))
+      S.each (voxelLocations resolution unitVoxel))
 
 voxelLocations :: Resolution -> Voxel -> [Location]
 voxelLocations resolution (Voxel voxelResolution voxelLocation) = do
@@ -67,13 +67,16 @@ voxelLocations resolution (Voxel voxelResolution voxelLocation) = do
     i <- liftA3 V3 locations locations locations
     return (relativeLocation ^+^ i)
 
+toMesh :: Grid Bool -> Stream (Of Face) IO ()
+toMesh = toMeshStupid
+
+toMeshStupid :: Grid Bool -> Stream (Of Face) IO ()
+toMeshStupid grid = S.for (visibleVoxels grid) (\voxel ->
+  S.concat (S.each (voxelFaces voxel)))
+
 visibleVoxels :: Grid Bool -> Stream (Of Voxel) IO ()
 visibleVoxels grid =
   S.map fst (
     S.filter snd (
-      getVoxels grid unitVoxel))
-
-toMesh :: Grid Bool -> Stream (Of Face) IO ()
-toMesh grid = S.for (visibleVoxels grid) (\face ->
-  S.concat (S.each (voxelFaces face)))
+      enumerate grid))
 

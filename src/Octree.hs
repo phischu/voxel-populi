@@ -37,7 +37,7 @@ import GHC.Generics (
 
 data Octree a =
   Full a |
-  Children (Oct (Octree a))
+  Children !(Oct (Octree a))
     deriving (Eq, Ord, Show, Functor, Generic)
 
 instance (NFData a) => NFData (Octree a)
@@ -115,11 +115,14 @@ setVoxel (Children octreeChildren) voxel value =
     setVoxel octree rest value) octreeChildren)) where
       Just (child, rest) = splitVoxel voxel
 
-getVoxels :: Octree a -> Voxel -> [(Voxel, a)]
-getVoxels (Full a) voxel =
+enumerate :: Octree a -> [(Voxel, a)]
+enumerate octree = enumerateRelative octree unitVoxel
+
+enumerateRelative :: Octree a -> Voxel -> [(Voxel, a)]
+enumerateRelative (Full a) voxel =
   [(voxel, a)]
-getVoxels (Children children) voxel =
-  concat (zipOctWith getVoxels children (childVoxels voxel))
+enumerateRelative (Children children) voxel =
+  concat (zipOctWith enumerateRelative children (childVoxels voxel))
 
 childVoxels :: Voxel -> Oct Voxel
 childVoxels voxel =
@@ -146,7 +149,7 @@ toMesh octree = do
 octreeFaces :: (Monad m) => E V2 -> E V3 -> Octree Bool -> Stream (Of Face) m ()
 octreeFaces orientation direction octree =
   S.mapMaybe (maybeVoxelFace orientation direction) (
-    S.each (getVoxels octreeWithNeighbour unitVoxel)) where
+    S.each (enumerate octreeWithNeighbour)) where
       octreeWithNeighbour = perhapsUnTranspose (perhapsMirror (
         octreeNeighbour (perhapsMirror (perhapsTranspose octree)) (Full False)))
       perhapsMirror =
@@ -190,11 +193,11 @@ octreeNeighbour (Children children1) (Children children2) =
     (Oct (V2 _ rightChildrenA)) = children1
     (Oct (V2 leftChildrenB _)) = children2
 
-toMeshNaive :: (Monad m) => Octree Bool -> Stream (Of Face) m ()
-toMeshNaive octree =
+toMeshStupid :: (Monad m) => Octree Bool -> Stream (Of Face) m ()
+toMeshStupid octree =
   S.concat (S.concat (S.map voxelFaces (S.each (visibleVoxels octree))))
 
 visibleVoxels :: Octree Bool -> [Voxel]
 visibleVoxels octree =
-  map fst (filter snd (getVoxels octree unitVoxel))
+  map fst (filter snd (enumerate octree))
 

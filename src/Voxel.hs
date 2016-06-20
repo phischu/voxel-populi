@@ -22,7 +22,7 @@ type Depth = Int
 type Resolution = Int
 type Location = V3 Int
 
-data Voxel = Voxel Resolution Location
+data Voxel = Voxel !Resolution !Location
   deriving (Show, Eq, Ord, Generic)
 
 instance NFData Voxel
@@ -30,8 +30,10 @@ instance NFData Voxel
 data Cube = Cube Float (V3 Float)
   deriving (Show, Eq, Ord)
 
-data Face = Face (V3 Float) (V3 Float) (V3 Float)
-  deriving (Show, Eq, Ord)
+data Face = Face !(V3 Float) !(V3 Float) !(V3 Float)
+  deriving (Show, Eq, Ord, Generic)
+
+instance NFData Face
 
 data Side = Outside | Border | Inside
   deriving (Show, Eq, Ord)
