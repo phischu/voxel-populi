@@ -151,7 +151,7 @@ octreeFaces orientation direction octree =
   S.mapMaybe (maybeVoxelFace orientation direction) (
     S.each (enumerate octreeWithNeighbour)) where
       octreeWithNeighbour = perhapsUnTranspose (perhapsMirror (
-        octreeNeighbour (perhapsMirror (perhapsTranspose octree)) (Full False)))
+        neighbours (perhapsMirror (perhapsTranspose octree)) (Full False)))
       perhapsMirror =
         view (el orientation) (V2 id mirrorOctree)
       perhapsTranspose =
@@ -180,16 +180,16 @@ maybeVoxelFace orientation direction (voxel, (True, False)) =
 maybeVoxelFace _ _ _ =
   Nothing
 
-octreeNeighbour :: Octree a -> Octree a -> Octree (a, a)
-octreeNeighbour (Full value1) (Full value2) =
+neighbours :: Octree a -> Octree a -> Octree (a, a)
+neighbours (Full value1) (Full value2) =
   Full (value1, value2)
-octreeNeighbour (Full value1) (Children children2) =
-  octreeNeighbour (Children (homogeneousOct (Full value1))) (Children children2)
-octreeNeighbour (Children children1) (Full value2) =
-  octreeNeighbour (Children children1) (Children (homogeneousOct (Full value2)))
-octreeNeighbour (Children children1) (Children children2) =
-  Children (zipOctWith octreeNeighbour children1 neighbours) where
-    neighbours = Oct (V2 rightChildrenA leftChildrenB)
+neighbours (Full value1) (Children children2) =
+  neighbours (Children (homogeneousOct (Full value1))) (Children children2)
+neighbours (Children children1) (Full value2) =
+  neighbours (Children children1) (Children (homogeneousOct (Full value2)))
+neighbours (Children children1) (Children children2) =
+  Children (zipOctWith neighbours children1 newNeighbours) where
+    newNeighbours = Oct (V2 rightChildrenA leftChildrenB)
     (Oct (V2 _ rightChildrenA)) = children1
     (Oct (V2 leftChildrenB _)) = children2
 

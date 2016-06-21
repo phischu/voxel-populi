@@ -5,7 +5,8 @@ import Voxel (
 import qualified Grid (
   fromVolume, setVoxel, enumerate, toMesh)
 import qualified Octree (
-  fromVolume, setVoxel, enumerate, toMesh)
+  fromVolume, setVoxel, enumerate, toMesh,
+  neighbours, Octree(Full))
 
 import Streaming (
   Stream, Of)
@@ -53,7 +54,10 @@ main = defaultMain [
     env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
       bench "Grid" (whnfIO (forceStream (Grid.toMesh grid)))),
     env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
-      bench "Octree" (whnfIO (forceStream (Octree.toMesh octree))))]]
+      bench "Octree" (whnfIO (forceStream (Octree.toMesh octree))))],
+  env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
+      bench "neighbours" (whnfIO (forceStream (S.each (
+        Octree.enumerate (Octree.neighbours octree (Octree.Full False)))))))]
 
 
 forceStream :: (NFData a) => Stream (Of a) IO r -> IO r

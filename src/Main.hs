@@ -32,7 +32,7 @@ import Control.Applicative (liftA3)
 import Control.Monad (when, unless)
 
 depth :: Int
-depth = 6
+depth = 8
 
 resolution :: Int
 resolution = 2
