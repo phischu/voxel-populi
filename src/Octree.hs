@@ -2,24 +2,21 @@
 module Octree where
 
 import Voxel (
-  Voxel(Voxel), Location, unitVoxel, relativeVoxel,
-  Depth, Cube, Side(..), voxelCube,
-  Face, voxelFace, voxelFaces)
+  Path(Path), Location, unitPath, relativePath,
+  Leaf(Leaf), Block(Air, Solid),
+  Depth, Cube, Side(..), pathCube, cubeFaces,
+  Face, cubeFace, Sign(Positive, Negative), Axis(X, Y, Z))
 
 import Linear (
-  V2(V2), V3(V3),
-  E(el), ex, ey, ez)
+  V3(V3))
 
 import Streaming (
   Stream, Of)
 import qualified Streaming.Prelude as S (
-  each, map, concat, mapMaybe)
+  each, mapMaybe)
 
 import Control.DeepSeq (
   NFData)
-
-import Control.Lens (
-  view)
 
 import Data.List (
   nub)
@@ -82,25 +79,25 @@ mapChild (V3 1 1 1) f (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
 mapChild _ _ _ =
   error "Invalid location."
 
-splitVoxel :: Voxel -> Maybe (Location, Voxel)
-splitVoxel (Voxel 1 (V3 0 0 0)) =
+splitVoxel :: Path -> Maybe (Location, Path)
+splitVoxel (Path 1 (V3 0 0 0)) =
   Nothing
-splitVoxel (Voxel resolution location) =
-  Just (childLocation, Voxel parentResolution parentLocation) where
+splitVoxel (Path resolution location) =
+  Just (childLocation, Path parentResolution parentLocation) where
     parentResolution = resolution `div` 2
     parentLocation = fmap (`mod` parentResolution) location
     childLocation = fmap (`div` parentResolution) location
 
-fromVolume :: Depth -> (Cube -> Side) -> Voxel -> Octree Bool
-fromVolume depth volume voxel
-  | depth < 0 = Full False
-  | otherwise = case volume (voxelCube voxel) of
-    Outside -> Full False
-    Inside -> Full True
+fromVolume :: Depth -> (Cube -> Side) -> Path -> Octree Block
+fromVolume depth volume path
+  | depth < 0 = Full Air
+  | otherwise = case volume (pathCube path) of
+    Outside -> Full Air
+    Inside -> Full Solid
     Border -> summarize (Children (
-      mapOct (fromVolume (depth - 1) volume . relativeVoxel voxel) octVoxels))
+      mapOct (fromVolume (depth - 1) volume . relativePath path) octVoxels))
 
-summarize :: Octree Bool -> Octree Bool
+summarize :: (Eq a) => Octree a -> Octree a
 summarize (Children children) =
   case nub (octToList (mapOct isFull children)) of
     [Just a] -> Full a
@@ -108,12 +105,9 @@ summarize (Children children) =
 summarize octree =
   octree
 
-isFull :: Octree Bool -> Maybe Bool
+isFull :: Octree a -> Maybe a
 isFull (Full value) = Just value
 isFull _ = Nothing
-
-emptyOctree :: Octree Bool
-emptyOctree = Full False
 
 zipOctree :: Octree a -> Octree b -> Octree (a, b)
 zipOctree (Full value1) (Full value2) =
@@ -125,64 +119,69 @@ zipOctree (Children children1) (Full value2) =
 zipOctree (Children children1) (Children children2) =
   Children (zipOctWith zipOctree children1 children2)
 
-setVoxel :: Octree Bool -> Voxel -> Bool -> Octree Bool
-setVoxel _ (Voxel 1 (V3 0 0 0)) value =
+setVoxel :: (Eq a) => Octree a -> Path -> a -> Octree a
+setVoxel _ (Path 1 (V3 0 0 0)) value =
   Full value
-setVoxel (Full octreeValue) voxel value =
-  setVoxel (Children (homogeneousOct (Full octreeValue))) voxel value
-setVoxel (Children octreeChildren) voxel value =
+setVoxel (Full octreeValue) path value =
+  setVoxel (Children (homogeneousOct (Full octreeValue))) path value
+setVoxel (Children octreeChildren) path value =
   summarize (Children (mapChild child (\octree ->
     setVoxel octree rest value) octreeChildren)) where
-      Just (child, rest) = splitVoxel voxel
+      Just (child, rest) = splitVoxel path
 
-enumerate :: Octree a -> [(Voxel, a)]
-enumerate octree = enumerateRelative octree unitVoxel
+enumerate :: Octree a -> [Leaf a]
+enumerate octree = enumerateRelative octree unitPath
 
-enumerateRelative :: Octree a -> Voxel -> [(Voxel, a)]
-enumerateRelative (Full a) voxel =
-  [(voxel, a)]
-enumerateRelative (Children children) voxel =
-  concat (octToList (zipOctWith enumerateRelative children (childVoxels voxel)))
+enumerateRelative :: Octree a -> Path -> [Leaf a]
+enumerateRelative (Full a) path =
+  [Leaf path a]
+enumerateRelative (Children children) path =
+  concat (octToList (zipOctWith enumerateRelative children (childVoxels path)))
 
-childVoxels :: Voxel -> Oct Voxel
-childVoxels voxel =
-  zipOctWith relativeVoxel (homogeneousOct voxel) octVoxels
+childVoxels :: Path -> Oct Path
+childVoxels path =
+  zipOctWith relativePath (homogeneousOct path) octVoxels
 
-octVoxels :: Oct Voxel
+octVoxels :: Oct Path
 octVoxels = Oct
-  (Voxel 2 (V3 0 0 0))
-  (Voxel 2 (V3 1 0 0))
-  (Voxel 2 (V3 0 1 0))
-  (Voxel 2 (V3 1 1 0))
-  (Voxel 2 (V3 0 0 1))
-  (Voxel 2 (V3 1 0 1))
-  (Voxel 2 (V3 0 1 1))
-  (Voxel 2 (V3 1 1 1))
+  (Path 2 (V3 0 0 0))
+  (Path 2 (V3 1 0 0))
+  (Path 2 (V3 0 1 0))
+  (Path 2 (V3 1 1 0))
+  (Path 2 (V3 0 0 1))
+  (Path 2 (V3 1 0 1))
+  (Path 2 (V3 0 1 1))
+  (Path 2 (V3 1 1 1))
 
 
-toMesh :: (Monad m) => Octree Bool -> Stream (Of Face) m ()
+toMesh :: (Monad m) => Octree Block -> Stream (Of Face) m ()
 toMesh octree = do
-  octreeFaces ex ex octree
-  octreeFaces ex ey octree
-  octreeFaces ex ez octree
-  octreeFaces ey ex octree
-  octreeFaces ey ey octree
-  octreeFaces ey ez octree
+  octreeFaces Positive X octree
+  octreeFaces Positive Y octree
+  octreeFaces Positive Z octree
+  octreeFaces Negative X octree
+  octreeFaces Negative Y octree
+  octreeFaces Negative Z octree
 
-octreeFaces :: (Monad m) => E V2 -> E V3 -> Octree Bool -> Stream (Of Face) m ()
-octreeFaces orientation direction octree =
-  S.mapMaybe (maybeVoxelFace orientation direction) (
+
+octreeFaces :: (Monad m) => Sign -> Axis -> Octree Block -> Stream (Of Face) m ()
+octreeFaces sign axis octree =
+  S.mapMaybe (maybeVoxelFace sign axis) (
     S.each (enumerate octreeWithNeighbour)) where
       octreeWithNeighbour = perhapsUnTranspose (perhapsMirror (
-        neighbours (perhapsMirror (perhapsTranspose octree)) (Full False)))
-      perhapsMirror =
-        view (el orientation) (V2 id mirrorOctree)
-      perhapsTranspose =
-        view (el direction)
-          (V3 id transposeOctree (transposeOctree . transposeOctree))
-      perhapsUnTranspose =
-        view (el direction)
-          (V3 id (transposeOctree . transposeOctree) transposeOctree)
+        neighbours (perhapsMirror (perhapsTranspose octree)) (Full Air)))
+      perhapsMirror = case sign of
+        Negative -> mirrorOctree
+        Positive -> id
+      perhapsTranspose = case axis of
+        X -> id
+        Y -> transposeOctree
+        Z -> transposeOctree . transposeOctree
+      perhapsUnTranspose = case axis of
+        X -> id
+        Y -> transposeOctree . transposeOctree
+        Z -> transposeOctree
+
 
 mirrorOctree :: Octree a -> Octree a
 mirrorOctree (Children (Oct a1 a2 a3 a4 a5 a6 a7 a8)) =
@@ -196,9 +195,9 @@ transposeOctree (Children (Oct a1 a2 a3 a4 a5 a6 a7 a8)) =
 transposeOctree octree =
   octree
 
-maybeVoxelFace :: E V2 -> E V3 -> (Voxel, (Bool, Bool)) -> Maybe Face
-maybeVoxelFace orientation direction (voxel, (True, False)) =
-  Just (voxelFace orientation direction voxel)
+maybeVoxelFace :: Sign -> Axis -> Leaf (Block, Block) -> Maybe Face
+maybeVoxelFace sign axis (Leaf path (Solid, Air)) =
+  Just (cubeFace sign axis (pathCube path))
 maybeVoxelFace _ _ _ =
   Nothing
 
@@ -215,11 +214,13 @@ neighbours (Children children) (Children neighbourChildren) =
     (Oct n1 _ n3 _ n5 _ n7 _) = neighbourChildren
     newNeighbours = Oct c2 n1 c4 n3 c6 n5 c8 n7
 
-toMeshStupid :: (Monad m) => Octree Bool -> Stream (Of Face) m ()
-toMeshStupid octree =
-  S.concat (S.concat (S.map voxelFaces (S.each (visibleVoxels octree))))
+stupidMesh :: Octree Block -> [Face]
+stupidMesh octree =
+  concatMap leafFaces (enumerate octree)
 
-visibleVoxels :: Octree Bool -> [Voxel]
-visibleVoxels octree =
-  map fst (filter snd (enumerate octree))
+leafFaces :: Leaf Block -> [Face]
+leafFaces (Leaf _ Air) =
+  []
+leafFaces (Leaf path Solid) =
+  cubeFaces (pathCube path)
 

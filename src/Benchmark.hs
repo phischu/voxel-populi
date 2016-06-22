@@ -1,7 +1,8 @@
 module Main where
 
 import Voxel (
-  Voxel(Voxel), Cube(Cube), Side(..), unitVoxel)
+  Path(Path), Cube(Cube), Side(..), unitPath,
+  Block(Air, Solid))
 import qualified Grid (
   fromVolume, setVoxel, enumerate, toMesh)
 import qualified Octree (
@@ -32,32 +33,32 @@ main :: IO ()
 main = defaultMain [
   bgroup "fromVolume" [
     bgroup "small" [
-      bench "Grid" (whnfIO (Grid.fromVolume 4 ball unitVoxel)),
-      bench "Octree" (nf (Octree.fromVolume 2 ball) unitVoxel)],
+      bench "Grid" (whnfIO (Grid.fromVolume 4 ball unitPath)),
+      bench "Octree" (nf (Octree.fromVolume 2 ball) unitPath)],
     bgroup "medium" [
-      bench "Grid" (whnfIO (Grid.fromVolume 16 ball unitVoxel)),
-      bench "Octree" (nf (Octree.fromVolume 4 ball) unitVoxel)],
+      bench "Grid" (whnfIO (Grid.fromVolume 16 ball unitPath)),
+      bench "Octree" (nf (Octree.fromVolume 4 ball) unitPath)],
     bgroup "large" [
-      bench "Grid" (whnfIO (Grid.fromVolume 64 ball unitVoxel)),
-      bench "Octree" (nf (Octree.fromVolume 6 ball) unitVoxel)]],
+      bench "Grid" (whnfIO (Grid.fromVolume 64 ball unitPath)),
+      bench "Octree" (nf (Octree.fromVolume 6 ball) unitPath)]],
   bgroup "setVoxel" [
-    env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
+    env (Grid.fromVolume 64 ball unitPath) (\grid ->
       bench "Grid" (whnfIO (Grid.setVoxel grid voxelToSet True))),
-    env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
-      bench "Octree" (nf (Octree.setVoxel octree voxelToSet) True))],
+    env (return (Octree.fromVolume 6 ball unitPath)) (\octree ->
+      bench "Octree" (nf (Octree.setVoxel octree voxelToSet) Solid))],
   bgroup "enumerate" [
-    env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
+    env (Grid.fromVolume 64 ball unitPath) (\grid ->
       bench "Grid" (whnfIO (forceStream (Grid.enumerate grid)))),
-    env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
+    env (return (Octree.fromVolume 6 ball unitPath)) (\octree ->
       bench "Octree" (whnfIO (forceStream (S.each (Octree.enumerate octree)))))],
   bgroup "toMesh" [
-    env (Grid.fromVolume 64 ball unitVoxel) (\grid ->
+    env (Grid.fromVolume 64 ball unitPath) (\grid ->
       bench "Grid" (whnfIO (forceStream (Grid.toMesh grid)))),
-    env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
+    env (return (Octree.fromVolume 6 ball unitPath)) (\octree ->
       bench "Octree" (whnfIO (forceStream (Octree.toMesh octree))))],
-  env (return (Octree.fromVolume 6 ball unitVoxel)) (\octree ->
+  env (return (Octree.fromVolume 6 ball unitPath)) (\octree ->
       bench "neighbours" (whnfIO (forceStream (S.each (
-        Octree.enumerate (Octree.neighbours octree (Octree.Full False)))))))]
+        Octree.enumerate (Octree.neighbours octree (Octree.Full Air)))))))]
 
 
 forceStream :: (NFData a) => Stream (Of a) IO r -> IO r
@@ -76,10 +77,10 @@ ball (Cube size position)
     distance = norm (circleCenter ^-^ cubeCenter)
 
 
-voxelToSet :: Voxel
-voxelToSet = Voxel 16 (V3 1 1 1)
+voxelToSet :: Path
+voxelToSet = Path 16 (V3 1 1 1)
 
 
-voxelToGet :: Voxel
-voxelToGet = Voxel 4 (V3 1 1 1)
+voxelToGet :: Path
+voxelToGet = Path 4 (V3 1 1 1)
 

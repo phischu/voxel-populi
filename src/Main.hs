@@ -4,10 +4,11 @@ module Main where
 import Camera (
   Camera, lookAt, fly, pan)
 import Voxel (
-  Voxel(Voxel), Cube(Cube), Side(..), unitVoxel)
+  Path(Path), Cube(Cube), Side(..),
+  Block(Air, Solid), unitPath)
 import Octree (
-  Octree, fromVolume, toMesh,
-  emptyOctree, setVoxel)
+  Octree(Full), fromVolume, toMesh,
+  setVoxel)
 import Mesh (
   GPUMesh, createGPUMesh, renderGPUMesh, deleteGPUMesh)
 
@@ -32,22 +33,22 @@ import Control.Applicative (liftA3)
 import Control.Monad (when, unless)
 
 depth :: Int
-depth = 8
+depth = 5
 
 resolution :: Int
 resolution = 2
 
-octree :: Octree Bool
-octree = fmap not caveOctree
+octree :: Octree Block
+octree = caveOctree
 
-miniOctree :: Octree Bool
-miniOctree = setVoxel emptyOctree (Voxel 4 (V3 1 1 1)) True
+miniOctree :: Octree Block
+miniOctree = setVoxel (Full Air) (Path 4 (V3 1 1 1)) Solid
 
-ballOctree :: Octree Bool
-ballOctree = fromVolume depth ball unitVoxel
+ballOctree :: Octree Block
+ballOctree = fromVolume depth ball unitPath
 
-caveOctree :: Octree Bool
-caveOctree = fromVolume depth cave unitVoxel
+caveOctree :: Octree Block
+caveOctree = fromVolume depth cave unitPath
 
 initialCamera :: Camera
 initialCamera = lookAt (V3 2 2 2) (V3 0 0 0) (V3 0 1 0)
@@ -83,7 +84,7 @@ main = do
 
   _ <- GLFW.init
 
-  Just window <- GLFW.createWindow 600 600 "Voxel Populi" Nothing Nothing
+  Just window <- GLFW.createWindow 600 600 "Path Populi" Nothing Nothing
 
   GLFW.makeContextCurrent (Just window)
 

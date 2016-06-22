@@ -2,11 +2,7 @@
 module Voxel where
 
 import Linear (
-  V2(V2), V3(V3), (*^), (^+^),
-  unit, E(el), _x, _y, _z)
-
-import Control.Lens (
-  view)
+  V3(V3), (*^), (^+^))
 
 import Control.Applicative (
   liftA3)
@@ -19,18 +15,29 @@ import GHC.Generics (
 
 
 type Depth = Int
-type Resolution = Int
+
+data Path = Path Resolution Location
+  deriving (Show, Eq, Ord, Generic)
+instance NFData Path
+
 type Location = V3 Int
 
-data Voxel = Voxel !Resolution !Location
-  deriving (Show, Eq, Ord, Generic)
-
-instance NFData Voxel
+type Resolution = Int
 
 data Cube = Cube Float (V3 Float)
   deriving (Show, Eq, Ord)
 
-data Face = Face !(V3 Float) !(V3 Float) !(V3 Float)
+data Leaf a = Leaf Path a
+  deriving (Show, Eq, Ord, Generic)
+
+instance (NFData a) => NFData (Leaf a)
+
+data Block = Air | Solid
+  deriving (Show, Eq, Ord, Generic)
+
+instance NFData Block
+
+data Face = Face (V3 Float) (V3 Float) (V3 Float)
   deriving (Show, Eq, Ord, Generic)
 
 instance NFData Face
@@ -38,52 +45,66 @@ instance NFData Face
 data Side = Outside | Border | Inside
   deriving (Show, Eq, Ord)
 
+pathCube :: Path -> Cube
+pathCube (Path resolution location) =
+  Cube size position where
+    size = recip (realToFrac resolution)
+    position = size *^ fmap realToFrac location
 
-unitVoxel :: Voxel
-unitVoxel = Voxel 1 (V3 0 0 0)
+unitPath :: Path
+unitPath = Path 1 (V3 0 0 0)
 
-relativeVoxel :: Voxel -> Voxel -> Voxel
-relativeVoxel parentVoxel childVoxel =
-  Voxel resolution location where
+unitCube :: Cube
+unitCube = Cube 1 (V3 0 0 0)
+
+relativePath :: Path -> Path -> Path
+relativePath parentPath childPath =
+  Path resolution location where
     resolution = parentResolution * childResolution
     location = childResolution *^ parentLocation ^+^ childLocation
-    Voxel parentResolution parentLocation = parentVoxel
-    Voxel childResolution childLocation = childVoxel
+    Path parentResolution parentLocation = parentPath
+    Path childResolution childLocation = childPath
 
-childVoxels :: Resolution -> Voxel -> [Voxel]
-childVoxels resolution voxel =
-  map (relativeVoxel voxel) (subdivideVoxels resolution)
+childPaths :: Resolution -> Path -> [Path]
+childPaths resolution path =
+  map (relativePath path) (subdividePath resolution)
 
-subdivideVoxels :: Resolution -> [Voxel]
-subdivideVoxels resolution = do
+subdividePath :: Resolution -> [Path]
+subdividePath resolution = do
   let locations = [0 .. resolution - 1]
   i <- liftA3 V3 locations locations locations
-  return (Voxel resolution i)
+  return (Path resolution i)
 
-voxelCube :: Voxel -> Cube
-voxelCube (Voxel resolution location) = Cube size position where
-  size = recip (realToFrac resolution)
-  position = size *^ fmap realToFrac location
+cubeFaces :: Cube -> [Face]
+cubeFaces cube = [
+  cubeFace Positive X cube,
+  cubeFace Positive Y cube,
+  cubeFace Positive Z cube,
+  cubeFace Negative X cube,
+  cubeFace Negative Y cube,
+  cubeFace Negative Z cube]
 
-voxelFaces :: Voxel -> V2 (V3 Face)
-voxelFaces (Voxel resolution location) =
-  V2
-    (V3
-      (Face position2 (negate side2) (negate side3))
-      (Face position2 (negate side3) (negate side1))
-      (Face position2 (negate side1) (negate side2)))
-    (V3
-      (Face position1 side2 side3)
-      (Face position1 side3 side1)
-      (Face position1 side1 side2)) where
-        size = recip (realToFrac resolution)
-        position1 = size *^ (fmap realToFrac location)
-        position2 = position1 ^+^ V3 size size size
-        side1 = size *^ (unit _x)
-        side2 = size *^ (unit _y)
-        side3 = size *^ (unit _z)
+data Sign = Negative | Positive
+  deriving (Eq, Ord, Show)
 
-voxelFace :: E V2 -> E V3 -> Voxel -> Face
-voxelFace orientation direction voxel =
-  view (el orientation . el direction) (voxelFaces voxel)
+data Axis = X | Y | Z
+  deriving (Eq, Ord, Show)
+
+cubeFace :: Sign -> Axis -> Cube -> Face
+cubeFace sign axis (Cube size position) =
+  Face facePosition faceSide1 faceSide2 where
+    facePosition = case sign of
+      Negative -> position
+      Positive -> position ^+^ V3 size size size
+    faceSide1 = perhapsNegate (case axis of
+      X -> V3 0 size 0
+      Y -> V3 0 0 size
+      Z -> V3 size 0 0)
+    faceSide2 = perhapsNegate (case axis of
+      X -> V3 0 0 size
+      Y -> V3 size 0 0
+      Z -> V3 0 size 0)
+    perhapsNegate = case sign of
+      Negative -> negate
+      Positive -> id
 

@@ -2,9 +2,9 @@
 module Grid where
 
 import Voxel (
-  Voxel(Voxel), Resolution, Location, unitVoxel,
-  Cube, Side(..), voxelCube,
-  Face, voxelFaces)
+  Path(Path), Resolution, Location, unitPath,
+  Cube, Side(..), pathCube,
+  Face, cubeFaces)
 
 import Linear (
   V3(V3), (^+^))
@@ -13,7 +13,7 @@ import Streaming.Prelude (
   Stream, Of)
 
 import qualified Streaming.Prelude as S (
-  map, concat, filter, for, mapM, each)
+  map, filter, for, mapM, each)
 
 import Data.Array.IO (
   IOArray, newArray, writeArray, readArray)
@@ -29,11 +29,11 @@ data Grid a = Grid !Resolution !(IOArray Location a)
 instance (NFData a) => NFData (Grid a) where
   rnf (Grid _ _) = ()
 
-fromVolume :: Resolution -> (Cube -> Side) -> Voxel -> IO (Grid Bool)
+fromVolume :: Resolution -> (Cube -> Side) -> Path -> IO (Grid Bool)
 fromVolume resolution volume voxel = do
   grid@(Grid _ values) <- emptyGrid resolution
   for_ (voxelLocations resolution voxel) (\location ->
-    case volume (voxelCube (Voxel resolution location)) of
+    case volume (pathCube (Path resolution location)) of
       Inside -> writeArray values location True
       _ -> return ())
   return grid
@@ -44,21 +44,21 @@ emptyGrid resolution = do
   values <- newArray locationBounds False
   return (Grid resolution values)
 
-setVoxel :: Grid Bool -> Voxel -> Bool -> IO (Grid Bool)
+setVoxel :: Grid Bool -> Path -> Bool -> IO (Grid Bool)
 setVoxel (Grid resolution values) address value = do
   for_ (voxelLocations resolution address) (\location ->
     writeArray values location value)
   return (Grid resolution values)
 
-enumerate :: Grid Bool -> Stream (Of (Voxel,Bool)) IO ()
+enumerate :: Grid Bool -> Stream (Of (Path,Bool)) IO ()
 enumerate (Grid resolution values) =
   S.mapM (\i -> do
     value <- readArray values i
-    return (Voxel resolution i, value)) (
-      S.each (voxelLocations resolution unitVoxel))
+    return (Path resolution i, value)) (
+      S.each (voxelLocations resolution unitPath))
 
-voxelLocations :: Resolution -> Voxel -> [Location]
-voxelLocations resolution (Voxel voxelResolution voxelLocation) = do
+voxelLocations :: Resolution -> Path -> [Location]
+voxelLocations resolution (Path voxelResolution voxelLocation) = do
     let relativeResolution =
           resolution `div` voxelResolution
         relativeLocation =
@@ -71,10 +71,10 @@ toMesh :: Grid Bool -> Stream (Of Face) IO ()
 toMesh = toMeshStupid
 
 toMeshStupid :: Grid Bool -> Stream (Of Face) IO ()
-toMeshStupid grid = S.for (visibleVoxels grid) (\voxel ->
-  S.concat (S.each (voxelFaces voxel)))
+toMeshStupid grid = S.for (visibleVoxels grid) (\path ->
+  S.each (cubeFaces (pathCube path)))
 
-visibleVoxels :: Grid Bool -> Stream (Of Voxel) IO ()
+visibleVoxels :: Grid Bool -> Stream (Of Path) IO ()
 visibleVoxels grid =
   S.map fst (
     S.filter snd (
