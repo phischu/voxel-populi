@@ -7,9 +7,8 @@ import Voxel (
   Face, voxelFace, voxelFaces)
 
 import Linear (
-  V2(V2), V3(V3), (^+^),
-  _x, _y, E(el), ex, ey, ez,
-  transpose)
+  V2(V2), V3(V3),
+  E(el), ex, ey, ez)
 
 import Streaming (
   Stream, Of)
@@ -20,16 +19,10 @@ import Control.DeepSeq (
   NFData)
 
 import Control.Lens (
-  view, over)
-import Data.Functor.Compose (
-  Compose(Compose, getCompose))
+  view)
 
 import Data.List (
   nub)
-import Data.Foldable (
-  toList)
-import Control.Applicative (
-  liftA2)
 
 import GHC.Generics (
   Generic)
@@ -37,30 +30,57 @@ import GHC.Generics (
 
 data Octree a =
   Full a |
-  Children !(Oct (Octree a))
-    deriving (Eq, Ord, Show, Functor, Generic)
+  Children (Oct (Octree a))
+    deriving (Eq, Ord, Show, Generic)
 
 instance (NFData a) => NFData (Octree a)
 
-newtype Oct a = Oct (V2 (V2 (V2 a)))
-  deriving (Eq, Ord, Show, Functor, Foldable, Generic)
+instance Functor Octree where
+  fmap f (Full a) = Full (f a)
+  fmap f (Children children) = Children (mapOct (fmap f) children)
+
+data Oct a = Oct a a a a a a a a
+  deriving (Eq, Ord, Show, Generic)
 
 instance (NFData a) => NFData (Oct a)
 
 homogeneousOct :: a -> Oct a
-homogeneousOct a = Oct (pure (pure (pure a)))
+homogeneousOct a = Oct a a a a a a a a
+
+mapOct :: (a -> b) -> Oct a -> Oct b
+mapOct f (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
+  Oct (f a1) (f a2) (f a3) (f a4) (f a5) (f a6) (f a7) (f a8)
 
 zipOctWith :: (a -> b -> c) -> Oct a -> Oct b -> Oct c
-zipOctWith f (Oct oct1) (Oct oct2) =
-  Oct (liftA2 (liftA2 (liftA2 f)) oct1 oct2)
+zipOctWith f a b =
+  Oct (f a1 b1) (f a2 b2) (f a3 b3) (f a4 b4)
+      (f a5 b5) (f a6 b6) (f a7 b7) (f a8 b8) where
+        Oct a1 a2 a3 a4 a5 a6 a7 a8 = a
+        Oct b1 b2 b3 b4 b5 b6 b7 b8 = b
+
+octToList :: Oct a -> [a]
+octToList (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
+  [a1, a2, a3, a4, a5, a6, a7, a8]
 
 mapChild :: Location -> (a -> a) -> Oct a -> Oct a
-mapChild (V3 i1 i2 i3) f (Oct oct) = Oct (over child f oct) where
-  child = pick i1 . pick i2 . pick i3
-  pick i = case i of
-    0 -> _x
-    1 -> _y
-    _ -> error "Invalid location."
+mapChild (V3 0 0 0) f (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
+  Oct (f a1) a2 a3 a4 a5 a6 a7 a8
+mapChild (V3 1 0 0) f (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
+  Oct a1 (f a2) a3 a4 a5 a6 a7 a8
+mapChild (V3 0 1 0) f (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
+  Oct a1 a2 (f a3) a4 a5 a6 a7 a8
+mapChild (V3 1 1 0) f (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
+  Oct a1 a2 a3 (f a4) a5 a6 a7 a8
+mapChild (V3 0 0 1) f (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
+  Oct a1 a2 a3 a4 (f a5) a6 a7 a8
+mapChild (V3 1 0 1) f (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
+  Oct a1 a2 a3 a4 a5 (f a6) a7 a8
+mapChild (V3 0 1 1) f (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
+  Oct a1 a2 a3 a4 a5 a6 (f a7) a8
+mapChild (V3 1 1 1) f (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
+  Oct a1 a2 a3 a4 a5 a6 a7 (f a8)
+mapChild _ _ _ =
+  error "Invalid location."
 
 splitVoxel :: Voxel -> Maybe (Location, Voxel)
 splitVoxel (Voxel 1 (V3 0 0 0)) =
@@ -78,11 +98,11 @@ fromVolume depth volume voxel
     Outside -> Full False
     Inside -> Full True
     Border -> summarize (Children (
-      fmap (fromVolume (depth - 1) volume . relativeVoxel voxel) octVoxels))
+      mapOct (fromVolume (depth - 1) volume . relativeVoxel voxel) octVoxels))
 
 summarize :: Octree Bool -> Octree Bool
 summarize (Children children) =
-  case nub (toList (fmap isFull children)) of
+  case nub (octToList (mapOct isFull children)) of
     [Just a] -> Full a
     _ -> Children children where
 summarize octree =
@@ -122,20 +142,23 @@ enumerateRelative :: Octree a -> Voxel -> [(Voxel, a)]
 enumerateRelative (Full a) voxel =
   [(voxel, a)]
 enumerateRelative (Children children) voxel =
-  concat (zipOctWith enumerateRelative children (childVoxels voxel))
+  concat (octToList (zipOctWith enumerateRelative children (childVoxels voxel)))
 
 childVoxels :: Voxel -> Oct Voxel
 childVoxels voxel =
   zipOctWith relativeVoxel (homogeneousOct voxel) octVoxels
 
 octVoxels :: Oct Voxel
-octVoxels = Oct (do
-  x <- V2 (V3 0 0 0) (V3 1 0 0)
-  return (do
-    y <- V2 (V3 0 0 0) (V3 0 1 0)
-    return (do
-      z <- V2 (V3 0 0 0) (V3 0 0 1)
-      return (Voxel 2 (x ^+^ y ^+^ z)))))
+octVoxels = Oct
+  (Voxel 2 (V3 0 0 0))
+  (Voxel 2 (V3 1 0 0))
+  (Voxel 2 (V3 0 1 0))
+  (Voxel 2 (V3 1 1 0))
+  (Voxel 2 (V3 0 0 1))
+  (Voxel 2 (V3 1 0 1))
+  (Voxel 2 (V3 0 1 1))
+  (Voxel 2 (V3 1 1 1))
+
 
 toMesh :: (Monad m) => Octree Bool -> Stream (Of Face) m ()
 toMesh octree = do
@@ -162,15 +185,14 @@ octreeFaces orientation direction octree =
           (V3 id (transposeOctree . transposeOctree) transposeOctree)
 
 mirrorOctree :: Octree a -> Octree a
-mirrorOctree (Children (Oct (V2 leftChildren rightChildren))) =
-  Children (fmap mirrorOctree (Oct (V2 rightChildren leftChildren)))
+mirrorOctree (Children (Oct a1 a2 a3 a4 a5 a6 a7 a8)) =
+  Children (mapOct mirrorOctree (Oct a2 a1 a4 a3 a6 a5 a8 a7))
 mirrorOctree octree =
   octree
 
 transposeOctree :: Octree a -> Octree a
-transposeOctree (Children (Oct octChildren)) =
-  Children (fmap transposeOctree (Oct transposedOct)) where
-    transposedOct = getCompose (transpose (fmap Compose octChildren))
+transposeOctree (Children (Oct a1 a2 a3 a4 a5 a6 a7 a8)) =
+  Children (mapOct transposeOctree (Oct a1 a3 a5 a7 a2 a4 a6 a8))
 transposeOctree octree =
   octree
 
@@ -187,11 +209,11 @@ neighbours (Full value1) (Children children2) =
   neighbours (Children (homogeneousOct (Full value1))) (Children children2)
 neighbours (Children children1) (Full value2) =
   neighbours (Children children1) (Children (homogeneousOct (Full value2)))
-neighbours (Children children1) (Children children2) =
-  Children (zipOctWith neighbours children1 newNeighbours) where
-    newNeighbours = Oct (V2 rightChildrenA leftChildrenB)
-    (Oct (V2 _ rightChildrenA)) = children1
-    (Oct (V2 leftChildrenB _)) = children2
+neighbours (Children children) (Children neighbourChildren) =
+  Children (zipOctWith neighbours children newNeighbours) where
+    (Oct _ c2 _ c4 _ c6 _ c8) = children
+    (Oct n1 _ n3 _ n5 _ n7 _) = neighbourChildren
+    newNeighbours = Oct c2 n1 c4 n3 c6 n5 c8 n7
 
 toMeshStupid :: (Monad m) => Octree Bool -> Stream (Of Face) m ()
 toMeshStupid octree =
