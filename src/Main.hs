@@ -4,11 +4,12 @@ module Main where
 import Camera (
   Camera, lookAt, fly, pan)
 import Voxel (
-  Path(Path), Cube(Cube), Side(..),
-  Block(Air, Solid), unitPath)
+  Path(Path), Block(Air, Solid), unitPath)
 import Octree (
   Octree(Full), fromVolume, toMesh, stupidMesh,
   setVoxel)
+import Volumes (
+  ball, cave)
 import Mesh (
   GPUMesh, createGPUMesh, renderGPUMesh, deleteGPUMesh)
 
@@ -26,23 +27,21 @@ import qualified Streaming.Prelude as S (
   each)
 
 import Linear (
-  V2(V2), V3(V3), (*^), (^+^), (^-^),
-  norm)
+  V2(V2), V3(V3), (*^))
 
 import Data.Bits ((.|.))
 
 import Text.Printf (printf)
-import Control.Applicative (liftA3)
 import Control.Monad (when, unless)
 
 depth :: Int
-depth = 2
+depth = 7
 
 resolution :: Int
 resolution = 2
 
 octree :: Octree Block
-octree = ballOctree
+octree = caveOctree
 
 miniOctree :: Octree Block
 miniOctree = setVoxel (Full Air) (Path 4 (V3 1 1 1)) Solid
@@ -57,30 +56,8 @@ initialCamera :: Camera
 initialCamera = lookAt (V3 2 2 2) (V3 0 0 0) (V3 0 1 0)
 
 wireframe :: Bool
-wireframe = False
+wireframe = True
 
-ball :: Cube -> Side
-ball (Cube size position)
-  | distance < circleRadius - cubeRadius = Inside
-  | distance > circleRadius + cubeRadius = Outside
-  | otherwise = Border where
-    circleCenter = V3 0.5 0.5 0.5
-    circleRadius = 0.5
-    cubeCenter = position ^+^ halfSize
-    cubeRadius = norm halfSize
-    halfSize = 0.5 *^ (V3 size size size)
-    distance = norm (circleCenter ^-^ cubeCenter)
-
-cave :: Cube -> Side
-cave (Cube size position)
-  | size < 0.1 && all (<0) corners = Inside
-  | size > 0.1 && all (>0) corners = Outside
-  | otherwise = Border where
-    corners = do
-      d <- liftA3 V3 [0, size] [0, size] [0, size]
-      return (value (position ^+^ d))
-    value x = sum (fmap (\xi -> sin (omega * xi / (2 * pi))) x)
-    omega = 70
 
 main :: IO ()
 main = do
@@ -98,7 +75,7 @@ main = do
   glClearColor 1 1 1 1
   when wireframe (glPolygonMode GL_FRONT_AND_BACK GL_LINE)
 
-  gpuMesh <- createGPUMesh (S.each (stupidMesh octree))
+  gpuMesh <- createGPUMesh (toMesh octree)
 
   loop window time cursorPos initialCamera gpuMesh
 

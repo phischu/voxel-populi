@@ -1,13 +1,14 @@
 module Main where
 
 import Voxel (
-  Path(Path), Cube(Cube), Side(..), unitPath,
-  Block(Air, Solid))
+  Path(Path), Block(Air, Solid), unitPath)
 import qualified Grid (
   fromVolume, setVoxel, enumerate, toMesh)
 import qualified Octree (
   fromVolume, setVoxel, enumerate, toMesh,
   neighbours, Octree(Full))
+import Volumes (
+  ball)
 
 import Streaming (
   Stream, Of)
@@ -20,8 +21,7 @@ import Criterion.Main (
   defaultMain)
 
 import Linear (
-  V3(V3), (*^), (^+^), (^-^),
-  norm)
+  V3(V3))
 
 import Control.DeepSeq (
   NFData, force)
@@ -64,22 +64,8 @@ main = defaultMain [
 forceStream :: (NFData a) => Stream (Of a) IO r -> IO r
 forceStream = S.mapM_ (evaluate . force)
 
-ball :: Cube -> Side
-ball (Cube size position)
-  | distance < circleRadius - cubeRadius = Inside
-  | distance > circleRadius + cubeRadius = Outside
-  | otherwise = Border where
-    circleCenter = V3 0.5 0.5 0.5
-    circleRadius = 0.5
-    cubeCenter = position ^+^ halfSize
-    cubeRadius = norm halfSize
-    halfSize = 0.5 *^ (V3 size size size)
-    distance = norm (circleCenter ^-^ cubeCenter)
-
-
 voxelToSet :: Path
 voxelToSet = Path 16 (V3 1 1 1)
-
 
 voxelToGet :: Path
 voxelToGet = Path 4 (V3 1 1 1)

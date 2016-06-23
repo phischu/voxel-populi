@@ -21,7 +21,8 @@ executable voxel-populi
                        Voxel,
                        Mesh,
                        Grid,
-                       Octree
+                       Octree,
+                       Volumes
   -- other-extensions:    
   build-depends:       base >=4.8.2 && <4.9,
                        GLFW-b >=1.4.8.0 && <1.5,
@@ -42,7 +43,8 @@ benchmark benchmark
   other-modules:       Voxel,
                        Mesh,
                        Grid,
-                       Octree
+                       Octree,
+                       Volumes
   build-depends:       base >=4.8.2 && <4.9,
                        criterion >=1.1.1.0 && <1.2,
                        linear >=1.20.4 && <1.21,
@@ -60,7 +62,8 @@ test-suite test
   main-is:             Test.hs
   other-modules:       Voxel,
                        Grid,
-                       Octree
+                       Octree,
+                       Volumes
   build-depends:       base >=4.8.2 && <4.9,
                        hspec >=2.2.3 && <2.3,
                        streaming >=0.1.4.2 && <0.2,
