@@ -7,7 +7,7 @@ import Voxel (
   Path(Path), Cube(Cube), Side(..),
   Block(Air, Solid), unitPath)
 import Octree (
-  Octree(Full), fromVolume, toMesh,
+  Octree(Full), fromVolume, toMesh, stupidMesh,
   setVoxel)
 import Mesh (
   GPUMesh, createGPUMesh, renderGPUMesh, deleteGPUMesh)
@@ -22,6 +22,9 @@ import qualified Graphics.UI.GLFW as GLFW (
 
 import Graphics.GL
 
+import qualified Streaming.Prelude as S (
+  each)
+
 import Linear (
   V2(V2), V3(V3), (*^), (^+^), (^-^),
   norm)
@@ -33,13 +36,13 @@ import Control.Applicative (liftA3)
 import Control.Monad (when, unless)
 
 depth :: Int
-depth = 5
+depth = 2
 
 resolution :: Int
 resolution = 2
 
 octree :: Octree Block
-octree = caveOctree
+octree = ballOctree
 
 miniOctree :: Octree Block
 miniOctree = setVoxel (Full Air) (Path 4 (V3 1 1 1)) Solid
@@ -95,7 +98,7 @@ main = do
   glClearColor 1 1 1 1
   when wireframe (glPolygonMode GL_FRONT_AND_BACK GL_LINE)
 
-  gpuMesh <- createGPUMesh (toMesh octree)
+  gpuMesh <- createGPUMesh (S.each (stupidMesh octree))
 
   loop window time cursorPos initialCamera gpuMesh
 

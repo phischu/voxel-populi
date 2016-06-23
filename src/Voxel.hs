@@ -105,6 +105,6 @@ cubeFace sign axis (Cube size position) =
       Y -> V3 size 0 0
       Z -> V3 0 size 0)
     perhapsNegate = case sign of
-      Negative -> negate
-      Positive -> id
+      Negative -> id
+      Positive -> negate
 
