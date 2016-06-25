@@ -1,7 +1,7 @@
 module Main where
 
 import Voxel (
-  Cube, Side(..), Depth, unitPath)
+  Cube, Side(..), Depth, rootPath)
 import Octree (
   fromVolume, enumerate)
 import Volumes (
@@ -36,5 +36,5 @@ main = hspec (do
 
 depthLeafs :: (Cube -> Side) -> Depth -> Int -> SpecWith ()
 depthLeafs volume depth n = it ("Depth: " ++ show depth) (do
-  length (enumerate (fromVolume depth volume unitPath)) `shouldBe` n)
+  length (enumerate (fromVolume depth volume rootPath)) `shouldBe` n)
 

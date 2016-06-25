@@ -2,7 +2,7 @@
 module Octree where
 
 import Voxel (
-  Path(Path), Location, unitPath, relativePath,
+  Path(Path), Location, rootPath, appendPath,
   Leaf(Leaf), Block(Air, Solid),
   Depth, Cube, Side(..), pathCube, cubeFaces,
   Face, cubeFace, Sign(Positive, Negative), Axis(X, Y, Z))
@@ -95,7 +95,7 @@ fromVolume depth volume path
     Outside -> Full Air
     Inside -> Full Solid
     Border -> summarize (Children (
-      mapOct (fromVolume (depth - 1) volume . relativePath path) octVoxels))
+      mapOct (fromVolume (depth - 1) volume . appendPath path) octVoxels))
 
 summarize :: (Eq a) => Octree a -> Octree a
 summarize (Children children) =
@@ -130,7 +130,7 @@ setVoxel (Children octreeChildren) path value =
       Just (child, rest) = splitVoxel path
 
 enumerate :: Octree a -> [Leaf a]
-enumerate octree = enumerateRelative octree unitPath
+enumerate octree = enumerateRelative octree rootPath
 
 enumerateRelative :: Octree a -> Path -> [Leaf a]
 enumerateRelative (Full a) path =
@@ -140,7 +140,7 @@ enumerateRelative (Children children) path =
 
 childVoxels :: Path -> Oct Path
 childVoxels path =
-  zipOctWith relativePath (homogeneousOct path) octVoxels
+  zipOctWith appendPath (homogeneousOct path) octVoxels
 
 octVoxels :: Oct Path
 octVoxels = Oct

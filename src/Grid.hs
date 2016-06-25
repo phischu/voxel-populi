@@ -2,7 +2,7 @@
 module Grid where
 
 import Voxel (
-  Path(Path), Resolution, Location, unitPath,
+  Path(Path), Resolution, Location, rootPath,
   Cube, Side(..), pathCube,
   Face, cubeFaces)
 
@@ -55,7 +55,7 @@ enumerate (Grid resolution values) =
   S.mapM (\i -> do
     value <- readArray values i
     return (Path resolution i, value)) (
-      S.each (voxelLocations resolution unitPath))
+      S.each (voxelLocations resolution rootPath))
 
 voxelLocations :: Resolution -> Path -> [Location]
 voxelLocations resolution (Path voxelResolution voxelLocation) = do

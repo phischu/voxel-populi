@@ -51,14 +51,14 @@ pathCube (Path resolution location) =
     size = recip (realToFrac resolution)
     position = size *^ fmap realToFrac location
 
-unitPath :: Path
-unitPath = Path 1 (V3 0 0 0)
+rootPath :: Path
+rootPath = Path 1 (V3 0 0 0)
 
 unitCube :: Cube
 unitCube = Cube 1 (V3 0 0 0)
 
-relativePath :: Path -> Path -> Path
-relativePath parentPath childPath =
+appendPath :: Path -> Path -> Path
+appendPath parentPath childPath =
   Path resolution location where
     resolution = parentResolution * childResolution
     location = childResolution *^ parentLocation ^+^ childLocation
@@ -67,7 +67,7 @@ relativePath parentPath childPath =
 
 childPaths :: Resolution -> Path -> [Path]
 childPaths resolution path =
-  map (relativePath path) (subdividePath resolution)
+  map (appendPath path) (subdividePath resolution)
 
 subdividePath :: Resolution -> [Path]
 subdividePath resolution = do

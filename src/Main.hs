@@ -4,7 +4,7 @@ module Main where
 import Camera (
   Camera, lookAt, fly, pan)
 import Voxel (
-  Path(Path), Block(Air, Solid), unitPath)
+  Path(Path), Block(Air, Solid), rootPath)
 import Octree (
   Octree(Full), fromVolume, toMesh, stupidMesh,
   setVoxel)
@@ -35,7 +35,7 @@ import Text.Printf (printf)
 import Control.Monad (when, unless)
 
 depth :: Int
-depth = 7
+depth = 6
 
 resolution :: Int
 resolution = 2
@@ -47,16 +47,16 @@ miniOctree :: Octree Block
 miniOctree = setVoxel (Full Air) (Path 4 (V3 1 1 1)) Solid
 
 ballOctree :: Octree Block
-ballOctree = fromVolume depth ball unitPath
+ballOctree = fromVolume depth ball rootPath
 
 caveOctree :: Octree Block
-caveOctree = fromVolume depth cave unitPath
+caveOctree = fromVolume depth cave rootPath
 
 initialCamera :: Camera
 initialCamera = lookAt (V3 2 2 2) (V3 0 0 0) (V3 0 1 0)
 
 wireframe :: Bool
-wireframe = True
+wireframe = False
 
 
 main :: IO ()
@@ -64,7 +64,7 @@ main = do
 
   _ <- GLFW.init
 
-  Just window <- GLFW.createWindow 600 600 "Path Populi" Nothing Nothing
+  Just window <- GLFW.createWindow 600 600 "Voxel Populi" Nothing Nothing
 
   GLFW.makeContextCurrent (Just window)
 
