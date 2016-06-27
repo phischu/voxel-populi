@@ -3,23 +3,20 @@ module Octree where
 
 import Voxel (
   Path(Path), Location, rootPath, appendPath,
-  Leaf(Leaf), Block(Air, Solid),
+  Block(Air, Solid),
   Depth, Cube, Side(..), pathCube, cubeFaces,
   Face, cubeFace, Sign(Positive, Negative), Axis(X, Y, Z))
 
 import Linear (
   V3(V3))
 
-import Streaming (
-  Stream, Of)
-import qualified Streaming.Prelude as S (
-  each, mapMaybe)
-
 import Control.DeepSeq (
   NFData)
 
 import Data.List (
   nub)
+import Data.Maybe (
+  mapMaybe)
 
 import GHC.Generics (
   Generic)
@@ -95,7 +92,7 @@ fromVolume depth volume path
     Outside -> Full Air
     Inside -> Full Solid
     Border -> summarize (Children (
-      mapOct (fromVolume (depth - 1) volume . appendPath path) octVoxels))
+      mapOct (fromVolume (depth - 1) volume . appendPath path) octPaths))
 
 summarize :: (Eq a) => Octree a -> Octree a
 summarize (Children children) =
@@ -129,21 +126,24 @@ setVoxel (Children octreeChildren) path value =
     setVoxel octree rest value) octreeChildren)) where
       Just (child, rest) = splitVoxel path
 
-enumerate :: Octree a -> [Leaf a]
-enumerate octree = enumerateRelative octree rootPath
+enumerate :: Octree a -> [a]
+enumerate (Full a) =
+  [a]
+enumerate (Children children) =
+  concatMap enumerate (octToList children)
 
-enumerateRelative :: Octree a -> Path -> [Leaf a]
-enumerateRelative (Full a) path =
-  [Leaf path a]
-enumerateRelative (Children children) path =
-  concat (octToList (zipOctWith enumerateRelative children (childVoxels path)))
+annotatePath :: Path -> Octree a -> Octree (Path, a)
+annotatePath path (Full a) =
+  Full (path, a)
+annotatePath path (Children children) =
+  Children (zipOctWith annotatePath (childPaths path) children)
 
-childVoxels :: Path -> Oct Path
-childVoxels path =
-  zipOctWith appendPath (homogeneousOct path) octVoxels
+childPaths :: Path -> Oct Path
+childPaths path =
+  zipOctWith appendPath (homogeneousOct path) octPaths
 
-octVoxels :: Oct Path
-octVoxels = Oct
+octPaths :: Oct Path
+octPaths = Oct
   (Path 2 (V3 0 0 0))
   (Path 2 (V3 1 0 0))
   (Path 2 (V3 0 1 0))
@@ -154,20 +154,20 @@ octVoxels = Oct
   (Path 2 (V3 1 1 1))
 
 
-toMesh :: (Monad m) => Octree Block -> Stream (Of Face) m ()
-toMesh octree = do
-  octreeFaces Positive X octree
-  octreeFaces Positive Y octree
-  octreeFaces Positive Z octree
-  octreeFaces Negative X octree
-  octreeFaces Negative Y octree
-  octreeFaces Negative Z octree
+naiveMesh :: Octree Block -> [Face]
+naiveMesh octree =
+  (partialNaiveMesh Positive X octree) ++
+  (partialNaiveMesh Positive Y octree) ++
+  (partialNaiveMesh Positive Z octree) ++
+  (partialNaiveMesh Negative X octree) ++
+  (partialNaiveMesh Negative Y octree) ++
+  (partialNaiveMesh Negative Z octree)
 
 
-octreeFaces :: (Monad m) => Sign -> Axis -> Octree Block -> Stream (Of Face) m ()
-octreeFaces sign axis octree =
-  S.mapMaybe (maybeVoxelFace sign axis) (
-    S.each (enumerate octreeWithNeighbour)) where
+partialNaiveMesh :: Sign -> Axis -> Octree Block -> [Face]
+partialNaiveMesh sign axis octree =
+  mapMaybe (neighbourFace sign axis) (
+    (enumerate (annotatePath rootPath octreeWithNeighbour))) where
       octreeWithNeighbour = perhapsUnTranspose (perhapsMirror (
         neighbours (perhapsMirror (perhapsTranspose octree)) (Full Air)))
       perhapsMirror = case sign of
@@ -195,10 +195,10 @@ transposeOctree (Children (Oct a1 a2 a3 a4 a5 a6 a7 a8)) =
 transposeOctree octree =
   octree
 
-maybeVoxelFace :: Sign -> Axis -> Leaf (Block, Block) -> Maybe Face
-maybeVoxelFace sign axis (Leaf path (Solid, Air)) =
+neighbourFace :: Sign -> Axis -> (Path, (Block, Block)) -> Maybe Face
+neighbourFace sign axis (path, (Solid, Air)) =
   Just (cubeFace sign axis (pathCube path))
-maybeVoxelFace _ _ _ =
+neighbourFace _ _ _ =
   Nothing
 
 neighbours :: Octree a -> Octree a -> Octree (a, a)
@@ -216,11 +216,11 @@ neighbours (Children children) (Children neighbourChildren) =
 
 stupidMesh :: Octree Block -> [Face]
 stupidMesh octree =
-  concatMap leafFaces (enumerate octree)
+  concatMap leafFaces (enumerate (annotatePath rootPath octree))
 
-leafFaces :: Leaf Block -> [Face]
-leafFaces (Leaf _ Air) =
+leafFaces :: (Path, Block) -> [Face]
+leafFaces (_, Air) =
   []
-leafFaces (Leaf path Solid) =
+leafFaces (path, Solid) =
   cubeFaces (pathCube path)
 

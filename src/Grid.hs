@@ -67,11 +67,8 @@ voxelLocations resolution (Path voxelResolution voxelLocation) = do
     i <- liftA3 V3 locations locations locations
     return (relativeLocation ^+^ i)
 
-toMesh :: Grid Bool -> Stream (Of Face) IO ()
-toMesh = toMeshStupid
-
-toMeshStupid :: Grid Bool -> Stream (Of Face) IO ()
-toMeshStupid grid = S.for (visibleVoxels grid) (\path ->
+stupidMesh :: Grid Bool -> Stream (Of Face) IO ()
+stupidMesh grid = S.for (visibleVoxels grid) (\path ->
   S.each (cubeFaces (pathCube path)))
 
 visibleVoxels :: Grid Bool -> Stream (Of Path) IO ()

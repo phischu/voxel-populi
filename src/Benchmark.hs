@@ -3,9 +3,9 @@ module Main where
 import Voxel (
   Path(Path), Block(Air, Solid), rootPath)
 import qualified Grid (
-  fromVolume, setVoxel, enumerate, toMesh)
+  fromVolume, setVoxel, enumerate, stupidMesh)
 import qualified Octree (
-  fromVolume, setVoxel, enumerate, toMesh,
+  fromVolume, setVoxel, enumerate, stupidMesh, naiveMesh,
   neighbours, Octree(Full))
 import Volumes (
   ball)
@@ -51,11 +51,13 @@ main = defaultMain [
       bench "Grid" (whnfIO (forceStream (Grid.enumerate grid)))),
     env (return (Octree.fromVolume 6 ball rootPath)) (\octree ->
       bench "Octree" (whnfIO (forceStream (S.each (Octree.enumerate octree)))))],
-  bgroup "toMesh" [
+  bgroup "meshing" [
     env (Grid.fromVolume 64 ball rootPath) (\grid ->
-      bench "Grid" (whnfIO (forceStream (Grid.toMesh grid)))),
+      bench "Grid.stupidMesh" (whnfIO (forceStream (Grid.stupidMesh grid)))),
     env (return (Octree.fromVolume 6 ball rootPath)) (\octree ->
-      bench "Octree" (whnfIO (forceStream (Octree.toMesh octree))))],
+      bench "Octree.stupidMesh" (whnfIO (forceStream (S.each (Octree.stupidMesh octree))))),
+    env (return (Octree.fromVolume 6 ball rootPath)) (\octree ->
+      bench "Octree.naiveMesh" (whnfIO (forceStream (S.each (Octree.naiveMesh octree)))))],
   env (return (Octree.fromVolume 6 ball rootPath)) (\octree ->
       bench "neighbours" (whnfIO (forceStream (S.each (
         Octree.enumerate (Octree.neighbours octree (Octree.Full Air)))))))]

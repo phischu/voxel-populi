@@ -6,7 +6,7 @@ import Camera (
 import Voxel (
   Path(Path), Block(Air, Solid), rootPath)
 import Octree (
-  Octree(Full), fromVolume, toMesh, stupidMesh,
+  Octree(Full), fromVolume, naiveMesh, stupidMesh,
   setVoxel)
 import Volumes (
   ball, cave)
@@ -75,7 +75,7 @@ main = do
   glClearColor 1 1 1 1
   when wireframe (glPolygonMode GL_FRONT_AND_BACK GL_LINE)
 
-  gpuMesh <- createGPUMesh (toMesh octree)
+  gpuMesh <- createGPUMesh (S.each (naiveMesh octree))
 
   loop window time cursorPos initialCamera gpuMesh
 

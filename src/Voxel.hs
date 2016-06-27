@@ -27,11 +27,6 @@ type Resolution = Int
 data Cube = Cube Float (V3 Float)
   deriving (Show, Eq, Ord)
 
-data Leaf a = Leaf Path a
-  deriving (Show, Eq, Ord, Generic)
-
-instance (NFData a) => NFData (Leaf a)
-
 data Block = Air | Solid
   deriving (Show, Eq, Ord, Generic)
 
