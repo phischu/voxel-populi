@@ -5,6 +5,8 @@ import Camera (
   Camera, lookAt, fly, pan)
 import Voxel (
   Path(Path), Block(Air, Solid), rootPath)
+import qualified Grid (
+  fromVolume, naiveMesh)
 import Octree (
   Octree(Full), fromVolume, naiveMesh, stupidMesh,
   setVoxel)
@@ -38,7 +40,7 @@ depth :: Int
 depth = 6
 
 resolution :: Int
-resolution = 2
+resolution = 64
 
 octree :: Octree Block
 octree = caveOctree
@@ -75,7 +77,8 @@ main = do
   glClearColor 1 1 1 1
   when wireframe (glPolygonMode GL_FRONT_AND_BACK GL_LINE)
 
-  gpuMesh <- createGPUMesh (S.each (naiveMesh octree))
+  ballGrid <- Grid.fromVolume resolution ball rootPath
+  gpuMesh <- createGPUMesh (Grid.naiveMesh ballGrid)
 
   loop window time cursorPos initialCamera gpuMesh
 

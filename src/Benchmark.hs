@@ -3,7 +3,7 @@ module Main where
 import Voxel (
   Path(Path), Block(Air, Solid), rootPath)
 import qualified Grid (
-  fromVolume, setVoxel, enumerate, stupidMesh)
+  fromVolume, setVoxel, enumerate, stupidMesh, naiveMesh)
 import qualified Octree (
   fromVolume, setVoxel, enumerate, stupidMesh, naiveMesh,
   neighbours, Octree(Full))
@@ -43,7 +43,7 @@ main = defaultMain [
       bench "Octree" (nf (Octree.fromVolume 6 ball) rootPath)]],
   bgroup "setVoxel" [
     env (Grid.fromVolume 64 ball rootPath) (\grid ->
-      bench "Grid" (whnfIO (Grid.setVoxel grid voxelToSet True))),
+      bench "Grid" (whnfIO (Grid.setVoxel grid voxelToSet Solid))),
     env (return (Octree.fromVolume 6 ball rootPath)) (\octree ->
       bench "Octree" (nf (Octree.setVoxel octree voxelToSet) Solid))],
   bgroup "enumerate" [
@@ -54,6 +54,8 @@ main = defaultMain [
   bgroup "meshing" [
     env (Grid.fromVolume 64 ball rootPath) (\grid ->
       bench "Grid.stupidMesh" (whnfIO (forceStream (Grid.stupidMesh grid)))),
+    env (Grid.fromVolume 64 ball rootPath) (\grid ->
+      bench "Grid.naiveMesh" (whnfIO (forceStream (Grid.naiveMesh grid)))),
     env (return (Octree.fromVolume 6 ball rootPath)) (\octree ->
       bench "Octree.stupidMesh" (whnfIO (forceStream (S.each (Octree.stupidMesh octree))))),
     env (return (Octree.fromVolume 6 ball rootPath)) (\octree ->
