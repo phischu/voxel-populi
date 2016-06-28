@@ -47,14 +47,14 @@ mapOct f (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
 
 zipOctWith :: (a -> b -> c) -> Oct a -> Oct b -> Oct c
 zipOctWith f a b =
-  Oct (f a1 b1) (f a2 b2) (f a3 b3) (f a4 b4)
-      (f a5 b5) (f a6 b6) (f a7 b7) (f a8 b8) where
-        Oct a1 a2 a3 a4 a5 a6 a7 a8 = a
-        Oct b1 b2 b3 b4 b5 b6 b7 b8 = b
+  Oct (f a0 b0) (f a1 b1) (f a2 b2) (f a3 b3)
+      (f a4 b4) (f a5 b5) (f a6 b6) (f a7 b7) where
+        Oct a0 a1 a2 a3 a4 a5 a6 a7 = a
+        Oct b0 b1 b2 b3 b4 b5 b6 b7 = b
 
 octToList :: Oct a -> [a]
-octToList (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
-  [a1, a2, a3, a4, a5, a6, a7, a8]
+octToList (Oct a0 a1 a2 a3 a4 a5 a6 a7) =
+  [a0, a1, a2, a3, a4, a5, a6, a7]
 
 mapChild :: Location -> (a -> a) -> Oct a -> Oct a
 mapChild (V3 0 0 0) f (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
@@ -169,7 +169,7 @@ partialNaiveMesh sign axis octree =
   mapMaybe (neighbourFace sign axis) (
     (enumerate (annotatePath rootPath octreeWithNeighbour))) where
       octreeWithNeighbour = perhapsUnTranspose (perhapsMirror (
-        neighbours (perhapsMirror (perhapsTranspose octree)) (Full Air)))
+        neighbour (perhapsMirror (perhapsTranspose octree)) (Full Air)))
       perhapsMirror = case sign of
         Negative -> mirrorOctree
         Positive -> id
@@ -201,18 +201,22 @@ neighbourFace sign axis (path, (Solid, Air)) =
 neighbourFace _ _ _ =
   Nothing
 
-neighbours :: Octree a -> Octree a -> Octree (a, a)
-neighbours (Full value1) (Full value2) =
-  Full (value1, value2)
-neighbours (Full value1) (Children children2) =
-  neighbours (Children (homogeneousOct (Full value1))) (Children children2)
-neighbours (Children children1) (Full value2) =
-  neighbours (Children children1) (Children (homogeneousOct (Full value2)))
-neighbours (Children children) (Children neighbourChildren) =
-  Children (zipOctWith neighbours children newNeighbours) where
-    (Oct _ c2 _ c4 _ c6 _ c8) = children
-    (Oct n1 _ n3 _ n5 _ n7 _) = neighbourChildren
-    newNeighbours = Oct c2 n1 c4 n3 c6 n5 c8 n7
+neighbour :: Octree a -> Octree a -> Octree (a, a)
+neighbour (Full value) (Full neighbourValue) =
+  Full (value, neighbourValue)
+neighbour (Full value) (Children neighbourChildren) =
+  neighbour
+    (Children (homogeneousOct (Full value)))
+    (Children neighbourChildren)
+neighbour (Children children) (Full neighbourValue) =
+  neighbour
+    (Children children)
+    (Children (homogeneousOct (Full neighbourValue)))
+neighbour (Children children) (Children neighbourChildren) =
+  Children (zipOctWith neighbour children newNeighbours) where
+    (Oct _ c1 _ c3 _ c5 _ c7) = children
+    (Oct n0 _ n2 _ n4 _ n6 _) = neighbourChildren
+    newNeighbours = Oct c1 n0 c3 n2 c5 n4 c7 n6
 
 stupidMesh :: Octree Block -> [Face]
 stupidMesh octree =

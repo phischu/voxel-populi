@@ -67,6 +67,7 @@ test-suite test
   build-depends:       base >=4.8.2 && <4.9,
                        hspec >=2.2.3 && <2.3,
                        streaming >=0.1.4.2 && <0.2,
+                       array >=0.5.1.0 && <0.6,
                        linear >=1.20.4 && <1.21,
                        deepseq >=1.4.1.1 && <1.5
   hs-source-dirs:      src

@@ -6,7 +6,7 @@ import qualified Grid (
   fromVolume, setVoxel, enumerate, stupidMesh, naiveMesh)
 import qualified Octree (
   fromVolume, setVoxel, enumerate, stupidMesh, naiveMesh,
-  neighbours, Octree(Full))
+  neighbour, Octree(Full))
 import Volumes (
   ball)
 
@@ -61,8 +61,8 @@ main = defaultMain [
     env (return (Octree.fromVolume 6 ball rootPath)) (\octree ->
       bench "Octree.naiveMesh" (whnfIO (forceStream (S.each (Octree.naiveMesh octree)))))],
   env (return (Octree.fromVolume 6 ball rootPath)) (\octree ->
-      bench "neighbours" (whnfIO (forceStream (S.each (
-        Octree.enumerate (Octree.neighbours octree (Octree.Full Air)))))))]
+      bench "neighbour" (whnfIO (forceStream (S.each (
+        Octree.enumerate (Octree.neighbour octree (Octree.Full Air)))))))]
 
 
 forceStream :: (NFData a) => Stream (Of a) IO r -> IO r

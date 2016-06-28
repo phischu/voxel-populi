@@ -6,7 +6,7 @@ import Camera (
 import Voxel (
   Path(Path), Block(Air, Solid), rootPath)
 import qualified Grid (
-  fromVolume, naiveMesh)
+  fromVolume, stupidMesh, naiveMesh)
 import Octree (
   Octree(Full), fromVolume, naiveMesh, stupidMesh,
   setVoxel)
@@ -26,7 +26,7 @@ import qualified Graphics.UI.GLFW as GLFW (
 import Graphics.GL
 
 import qualified Streaming.Prelude as S (
-  each)
+  each, length_)
 
 import Linear (
   V2(V2), V3(V3), (*^))
@@ -37,16 +37,16 @@ import Text.Printf (printf)
 import Control.Monad (when, unless)
 
 depth :: Int
-depth = 6
+depth = 3
 
 resolution :: Int
-resolution = 64
+resolution = 8
 
 octree :: Octree Block
-octree = caveOctree
+octree = ballOctree
 
 miniOctree :: Octree Block
-miniOctree = setVoxel (Full Air) (Path 4 (V3 1 1 1)) Solid
+miniOctree = setVoxel (Full Solid) (Path 2 (V3 1 1 1)) Air
 
 ballOctree :: Octree Block
 ballOctree = fromVolume depth ball rootPath
@@ -58,8 +58,7 @@ initialCamera :: Camera
 initialCamera = lookAt (V3 2 2 2) (V3 0 0 0) (V3 0 1 0)
 
 wireframe :: Bool
-wireframe = False
-
+wireframe = True
 
 main :: IO ()
 main = do
@@ -78,7 +77,7 @@ main = do
   when wireframe (glPolygonMode GL_FRONT_AND_BACK GL_LINE)
 
   ballGrid <- Grid.fromVolume resolution ball rootPath
-  gpuMesh <- createGPUMesh (Grid.naiveMesh ballGrid)
+  gpuMesh <- createGPUMesh (S.each (Octree.naiveMesh octree))
 
   loop window time cursorPos initialCamera gpuMesh
 
