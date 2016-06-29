@@ -42,8 +42,8 @@ homogeneousOct :: a -> Oct a
 homogeneousOct a = Oct a a a a a a a a
 
 mapOct :: (a -> b) -> Oct a -> Oct b
-mapOct f (Oct a1 a2 a3 a4 a5 a6 a7 a8) =
-  Oct (f a1) (f a2) (f a3) (f a4) (f a5) (f a6) (f a7) (f a8)
+mapOct f (Oct a0 a1 a2 a3 a4 a5 a6 a7) =
+  Oct (f a0) (f a1) (f a2) (f a3) (f a4) (f a5) (f a6) (f a7)
 
 zipOctWith :: (a -> b -> c) -> Oct a -> Oct b -> Oct c
 zipOctWith f a b =
@@ -140,7 +140,7 @@ annotatePath path (Children children) =
 
 childPaths :: Path -> Oct Path
 childPaths path =
-  zipOctWith appendPath (homogeneousOct path) octPaths
+  mapOct (appendPath path) octPaths
 
 octPaths :: Oct Path
 octPaths = Oct

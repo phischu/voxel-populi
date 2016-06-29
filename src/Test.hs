@@ -44,28 +44,32 @@ main = hspec (do
     resolutionFacesStupidMesh ball 16 9408
     resolutionFacesStupidMesh ball 32 87552
     resolutionFacesStupidMesh ball 64 759312
-    resolutionFacesStupidMesh ball 128 6324768)
+    resolutionFacesStupidMesh ball 128 6324768
+    resolutionFacesStupidMesh ball 256 51648096)
 
   describe "Octree.stupidMesh ball" (do
     depthFacesStupidMesh ball 3 480
     depthFacesStupidMesh ball 4 3360
     depthFacesStupidMesh ball 5 15648
     depthFacesStupidMesh ball 6 68496
-    depthFacesStupidMesh ball 7 295584)
+    depthFacesStupidMesh ball 7 295584
+    depthFacesStupidMesh ball 8 1201392)
 
   describe "Grid.naiveMesh ball" (do
     resolutionFacesNaiveMesh ball 8 192
     resolutionFacesNaiveMesh ball 16 984
     resolutionFacesNaiveMesh ball 32 4344
     resolutionFacesNaiveMesh ball 64 18288
-    resolutionFacesNaiveMesh ball 128 75192)
+    resolutionFacesNaiveMesh ball 128 75192
+    resolutionFacesNaiveMesh ball 256 304608)
 
   describe "Octree.naiveMesh ball" (do
     depthFacesNaiveMesh ball 3 192
     depthFacesNaiveMesh ball 4 984
     depthFacesNaiveMesh ball 5 4056
     depthFacesNaiveMesh ball 6 17064
-    depthFacesNaiveMesh ball 7 70872))
+    depthFacesNaiveMesh ball 7 70872
+    depthFacesNaiveMesh ball 8 287616))
 
 depthLeafs :: (Cube -> Side) -> Depth -> Int -> SpecWith ()
 depthLeafs volume depth n =

@@ -76,7 +76,7 @@ main = do
   glClearColor 1 1 1 1
   when wireframe (glPolygonMode GL_FRONT_AND_BACK GL_LINE)
 
-  ballGrid <- Grid.fromVolume resolution ball rootPath
+  -- ballGrid <- Grid.fromVolume resolution ball rootPath
   gpuMesh <- createGPUMesh (S.each (Octree.naiveMesh octree))
 
   loop window time cursorPos initialCamera gpuMesh
