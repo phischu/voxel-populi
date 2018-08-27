@@ -24,14 +24,14 @@ executable voxel-populi
                        Octree,
                        Volumes
   -- other-extensions:    
-  build-depends:       base >=4.8.2 && <4.9,
+  build-depends:       base >=4.8.2 && <4.12,
                        GLFW-b >=1.4.8.0 && <1.5,
-                       gl >=0.7.8.1 && <0.8,
+                       gl >=0.8 && <0.9,
                        linear >=1.20.4 && <1.21,
-                       streaming >=0.1.4.2 && <0.2,
+                       streaming >=0.2.1.0 && <0.3,
                        array >=0.5.1.0 && <0.6,
-                       lens >=4.13.2.1 && <4.14,
-                       transformers >=0.4.2.0 && <0.5,
+                       lens >=4.17 && <4.18,
+                       transformers >=0.5.5.0 && <0.6,
                        deepseq >=1.4.1.1 && <1.5
   hs-source-dirs:      src
   default-language:    Haskell2010
@@ -44,14 +44,16 @@ benchmark benchmark
                        Mesh,
                        Grid,
                        Octree,
-                       Volumes
-  build-depends:       base >=4.8.2 && <4.9,
-                       criterion >=1.1.1.0 && <1.2,
+                       Volumes,
+                       Camera
+  build-depends:       base >=4.8.2 && <4.12,
+                       criterion >=1.5.1.0 && <1.6,
                        linear >=1.20.4 && <1.21,
-                       streaming >=0.1.4.2 && <0.2,
+                       gl >=0.8 && <0.9,
+                       streaming >=0.2.1.0 && <0.3,
                        array >=0.5.1.0 && <0.6,
-                       lens >=4.13.2.1 && <4.14,
-                       transformers >=0.4.2.0 && <0.5,
+                       lens >=4.17 && <4.18,
+                       transformers >=0.5.5.0 && <0.6,
                        deepseq >=1.4.1.1 && <1.5
   hs-source-dirs:      src
   default-language:    Haskell2010
@@ -64,9 +66,9 @@ test-suite test
                        Grid,
                        Octree,
                        Volumes
-  build-depends:       base >=4.8.2 && <4.9,
-                       hspec >=2.2.3 && <2.3,
-                       streaming >=0.1.4.2 && <0.2,
+  build-depends:       base >=4.8.2 && <4.12,
+                       hspec >=2.5.5 && <2.6,
+                       streaming >=0.2.1.0 && <0.3,
                        array >=0.5.1.0 && <0.6,
                        linear >=1.20.4 && <1.21,
                        deepseq >=1.4.1.1 && <1.5
