@@ -37,13 +37,13 @@ import Text.Printf (printf)
 import Control.Monad (when, unless)
 
 depth :: Int
-depth = 3
+depth = 8
 
 resolution :: Int
 resolution = 8
 
 octree :: Octree Block
-octree = ballOctree
+octree = caveOctree
 
 miniOctree :: Octree Block
 miniOctree = setVoxel (Full Solid) (Path 2 (V3 1 1 1)) Air
@@ -58,7 +58,7 @@ initialCamera :: Camera
 initialCamera = lookAt (V3 2 2 2) (V3 0 0 0) (V3 0 1 0)
 
 wireframe :: Bool
-wireframe = True
+wireframe = False
 
 main :: IO ()
 main = do

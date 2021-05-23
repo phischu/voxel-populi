@@ -109,12 +109,10 @@ naiveMeshGrid resolution =
 stupidMeshOctree :: Depth -> Benchmark
 stupidMeshOctree depth =
   env (return (Octree.fromVolume depth ball rootPath)) (\octree ->
-    bench (show depth) (whnfIO (
-      forceStream (S.each (Octree.stupidMesh octree)))))
+    bench (show depth) (nf Octree.stupidMesh octree))
 
 naiveMeshOctree :: Depth -> Benchmark
 naiveMeshOctree depth =
   env (return (Octree.fromVolume depth ball rootPath)) (\octree ->
-    bench (show depth) (whnfIO (
-      forceStream (S.each (Octree.naiveMesh octree)))))
+    bench (show depth) (nf Octree.naiveMesh octree))
 

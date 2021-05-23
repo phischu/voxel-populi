@@ -51,8 +51,15 @@ createGPUMesh faces = do
 
   S.length_ faces >>= print
 
+  putStrLn "positions..."
+
   trianglePositions <- S.toList_ (facesTriangles faces)
+
+  putStrLn "normals..."
+
   triangleNormals <- S.toList_ (facesNormals faces)
+
+  putStrLn "Uploading data ..."
 
   uploadData trianglePositions triangleNormals
 
@@ -86,6 +93,8 @@ uploadData trianglePositions triangleNormals = do
   -- number of triangles
   let _numberOfTriangles = fromIntegral (length trianglePositions)
 
+  putStrLn "Starting"
+
   -- fill position VBO
   _vertexPositionBufferObject <- alloca (\vboPtr -> do
     glGenBuffers 1 vboPtr
@@ -100,6 +109,8 @@ uploadData trianglePositions triangleNormals = do
          (castPtr trianglePositionsPtr)
          GL_STATIC_DRAW)
     return vbo)
+
+  putStrLn "Starting 2"
 
   -- fill normal VBO
   _vertexNormalBufferObject <- alloca (\vboPtr -> do
@@ -116,6 +127,8 @@ uploadData trianglePositions triangleNormals = do
          GL_STATIC_DRAW)
     return vbo)
 
+  putStrLn "Starting 3"
+
   -- create shaders
   vertexShader <- glCreateShader GL_VERTEX_SHADER
   withCString vertexShaderSource (\vertexShaderSourceCString -> do
@@ -129,11 +142,17 @@ uploadData trianglePositions triangleNormals = do
       glShaderSource fragmentShader 1 fragmentShaderSourceCStringPtr nullPtr))
   glCompileShader fragmentShader
 
+
+  putStrLn "Starting 4"
+
   -- create program
   _shaderProgram <- glCreateProgram
   glAttachShader _shaderProgram vertexShader
   glAttachShader _shaderProgram fragmentShader
   glLinkProgram _shaderProgram
+
+
+  putStrLn "Starting 5"
 
   -- find attributes
   vertexPositionAttribute <- withCString "vertex_position" (\vertexPositionCString ->
@@ -149,6 +168,9 @@ uploadData trianglePositions triangleNormals = do
   glDeleteShader fragmentShader
   glDeleteShader vertexShader
 
+
+  putStrLn "Starting 6"
+
  -- define VAO
   _vertexArrayObject <- alloca (\vaoPtr -> do
     glGenVertexArrays 1 vaoPtr
@@ -161,6 +183,9 @@ uploadData trianglePositions triangleNormals = do
     glBindBuffer GL_ARRAY_BUFFER _vertexNormalBufferObject
     glVertexAttribPointer vertexNormalAttribute 3 GL_FLOAT GL_FALSE 0 nullPtr
     return vao)
+
+
+  putStrLn "Starting 7"
 
   return (GPUMesh {..})
 
